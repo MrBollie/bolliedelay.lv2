@@ -14,10 +14,13 @@ typedef enum {
     BDL_MIX         = 2,
     BDL_DECAY       = 3,
     BDL_CROSSF      = 4,
-    BDL_INPUT_L     = 5,
-    BDL_INPUT_R     = 6,
-    BDL_OUTPUT_L    = 7,
-    BDL_OUTPUT_R    = 8
+    BDL_TONE        = 5,
+    BDL_DIV_L       = 6,
+    BDL_DIV_R       = 7,
+    BDL_INPUT_L     = 8,
+    BDL_INPUT_R     = 9,
+    BDL_OUTPUT_L    = 10,
+    BDL_OUTPUT_R    = 11
 } PortIdx;
 
 typedef struct {
@@ -26,12 +29,17 @@ typedef struct {
     const float* mix;
     const float* decay;
     const float* crossf;
+    const float* tone;
+    const float* div_l;
+    const float* div_r;
     const float* input_l;
     const float* input_r;
     float* output_l;
     float* output_r;
     float buffer_l[MAX_TAPE_LEN];
     float buffer_r[MAX_TAPE_LEN];
+    float prev_filtered_sample_l;
+    float prev_filtered_sample_r;
     double rate;
     int wl_pos;
     int wr_pos;
@@ -77,6 +85,15 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_CROSSF:
             self->crossf = data;
             break;
+        case BDL_TONE:
+            self->tone = data;
+            break;
+        case BDL_DIV_L:
+            self->div_l = data;
+            break;
+        case BDL_DIV_R:
+            self->div_r = data;
+            break;
         case BDL_INPUT_L:
             self->input_l = data;
             break;
@@ -103,6 +120,9 @@ static void activate(LV2_Handle instance) {
         self->buffer_l[i] = 0;
         self->buffer_r[i] = 0;
     }
+
+    // delete previously filtered samples
+    self->prev_filtered_sample_l = self->prev_filtered_sample_r = 0;
 
     // Reset the positions
     self->wl_pos = 0;
@@ -142,6 +162,21 @@ static long int handle_tap(BollieDelay* self) {
     return d;
 }
 
+/**
+* Calculates number of samples used for divided delay times.
+*/
+static int calc_delay_time(int delay_time, int div) {
+    switch(div) {
+        case 1:
+            return floor(delay_time / 2);
+            break;
+        case 2:
+            return floor(delay_time / 4 * 3);
+            break;
+    }
+    return delay_time;
+}
+
 
 /**
 * Main process function of the plugin.
@@ -157,56 +192,76 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     }
 
     // Calculate the number of samples for the currently set delay time
-    int delay_samples = floor(*self->delay / 1000 * self->rate);
-    //delay_samples = 48500;
-    if (delay_samples > MAX_TAPE_LEN)
-        delay_samples = MAX_TAPE_LEN;
+    int ds = floor(*self->delay / 1000 * self->rate);
+    int d_samples_l = calc_delay_time(ds, *self->div_l);
+    int d_samples_r = calc_delay_time(ds, *self->div_r);
+
+    // Make sure, delay times don't exceed MAX_TAPE_LEN
+    if (d_samples_l > MAX_TAPE_LEN)
+        d_samples_l = MAX_TAPE_LEN;
+
+    if (d_samples_r > MAX_TAPE_LEN)
+        d_samples_r = MAX_TAPE_LEN;
 
     // Loop over the block of audio we got
     for(int i = 0 ; i < n_samples ; i++) {
 
         // Derive the read position
-        self->rl_pos = self->wl_pos - delay_samples;
-        self->rr_pos = self->wr_pos - delay_samples;
+        self->rl_pos = self->wl_pos - d_samples_l;
+        self->rr_pos = self->wr_pos - d_samples_r;
         
         // Rewind if neccessary
         if (self->rl_pos < 0)
-            self->rl_pos = delay_samples + self->rl_pos;
+            self->rl_pos = d_samples_l + self->rl_pos;
         if (self->rr_pos < 0)
-            self->rr_pos = delay_samples + self->rr_pos;
+            self->rr_pos = d_samples_r + self->rr_pos;
 
-        // Low Pass
-        float cur_fr_l = self->input_l[i];
-        float cur_fr_r = self->input_r[i];
-        float a = 0.5;
+        // Store samples for filtering
+        float cur_fs_l = self->input_l[i];
+        float cur_fs_r = self->input_r[i];
+        float a = *self->tone / 100;
 
-        if (i>0) {
-            cur_fr_l = a * cur_fr_l + (1-a) * self->input_l[i-1];
-            cur_fr_r = a * cur_fr_r + (1-a) * self->input_r[i-1];
+        // If we have a previous filtered sample, then apply the lowpass to the 
+        // current one
+        if (self->prev_filtered_sample_l > 0 
+            && self->prev_filtered_sample_r > 0) {
+            cur_fs_l = a * cur_fs_l + (1-a) * self->prev_filtered_sample_l;
+            cur_fs_r = a * cur_fs_r + (1-a) * self->prev_filtered_sample_r;
         }
+
+        // Store for next filter run
+        self->prev_filtered_sample_l = cur_fs_l;
+        self->prev_filtered_sample_r = cur_fs_r;
             
         // Copy input to buffer and mix it with the previous content
-        float old_fr_l = self->buffer_l[self->wl_pos]; // previous frame left
-        float old_fr_r = self->buffer_r[self->wr_pos]; // previous frame right
+        float old_s_l = self->buffer_l[self->wl_pos]; // previous sample left
+        float old_s_r = self->buffer_r[self->wr_pos]; // previous sample right
+
+        // Left Channel
         self->buffer_l[self->wl_pos] = 
-            self->input_l[i] 
-            + old_fr_r * *self->crossf / 100
-            + old_fr_l * *self->decay / 100;
+            cur_fs_l                            // current filtered sample
+            + old_s_r * *self->crossf / 200     // mix with crossfeed
+            + old_s_l * *self->decay / 200;     // mix with decayed old sample
 
+        // Right channel (s. above)
         self->buffer_r[self->wr_pos] = 
-            self->input_r[i] 
-            + old_fr_l * *self->crossf / 100
-            + old_fr_r * *self->decay / 100;
+            cur_fs_r
+            + old_s_l * *self->crossf / 200
+            + old_s_r * *self->decay / 200;
 
+        // Now copy samples from read pos of the buffer to the output buffer
+        
+        // Left channel
         self->output_l[i] = self->buffer_l[self->rl_pos] * *(self->mix) / 100 
             + self->input_l[i] * (100 - *self->mix) / 100;
 
+        // Same for right channel
         self->output_r[i] = self->buffer_r[self->rr_pos] * *(self->mix) / 100 
             + self->input_r[i] * (100 - *self->mix) / 100;
 
         // Iterate write position
-        self->wl_pos = (self->wl_pos+1 >= delay_samples ? 0 : self->wl_pos+1);
-        self->wr_pos = (self->wr_pos+1 >= delay_samples ? 0 : self->wr_pos+1);
+        self->wl_pos = (self->wl_pos+1 >= d_samples_l ? 0 : self->wl_pos+1);
+        self->wr_pos = (self->wr_pos+1 >= d_samples_r ? 0 : self->wr_pos+1);
     }
 }
 

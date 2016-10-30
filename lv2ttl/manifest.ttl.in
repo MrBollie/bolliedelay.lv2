@@ -4,4 +4,4 @@
 <https://ca9.eu/lv2/bolliedelay>
 	a lv2:Plugin ;
 	lv2:binary <bolliedelay@LIB_EXT@>  ;
-	rdfs:seeAlso <bolliedelay.ttl> .
+	rdfs:seeAlso <bolliedelay.ttl>, <modgui.ttl> .
