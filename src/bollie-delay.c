@@ -240,14 +240,14 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         // Left Channel
         self->buffer_l[self->wl_pos] = 
             cur_fs_l                            // current filtered sample
-            + old_s_r * *self->crossf / 200     // mix with crossfeed
-            + old_s_l * *self->decay / 200;     // mix with decayed old sample
+            + old_s_r * *self->crossf / 100     // mix with crossfeed
+            + old_s_l * *self->decay / 100;     // mix with decayed old sample
 
         // Right channel (s. above)
         self->buffer_r[self->wr_pos] = 
             cur_fs_r
-            + old_s_l * *self->crossf / 200
-            + old_s_r * *self->decay / 200;
+            + old_s_l * *self->crossf / 100
+            + old_s_r * *self->decay / 100;
 
         // Now copy samples from read pos of the buffer to the output buffer
         
