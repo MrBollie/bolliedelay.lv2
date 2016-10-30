@@ -101,10 +101,10 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
             self->input_r = data;
             break;
         case BDL_OUTPUT_L:
-            self->output_r = data;
+            self->output_l = data;
             break;
         case BDL_OUTPUT_R:
-            self->output_l = data;
+            self->output_r = data;
             break;
     }
 }
