@@ -85,15 +85,15 @@
         lv2:maximum 2 ;
             lv2:portProperty lv2:enumeration, lv2:integer ;
         lv2:scalePoint [
-            rdf:value: 0 ;
+            rdf:value 0 ;
             rdfs:label "1/4" ;
             rdfs:comment "Simple quarter notes." ;
         ], [
-            rdf:value: 1 ;
+            rdf:value 1 ;
             rdfs:label "1/8" ;
             rdfs:comment "Simple eigths notes." ;
         ], [
-            rdf:value: 2 ;
+            rdf:value 2 ;
             rdfs:label "1/8." ;
             rdfs:comment "Dotted eigths notes." ;
         ];
@@ -108,15 +108,15 @@
         lv2:maximum 2 ;
         lv2:portProperty lv2:enumeration, lv2:integer;
         lv2:scalePoint [
-            rdf:value: 0 ;
+            rdf:value 0 ;
             rdfs:label "1/4" ;
             rdfs:comment "Simple quarter notes." ;
         ], [
-            rdf:value: 1 ;
+            rdf:value 1 ;
             rdfs:label "1/8" ;
             rdfs:comment "Simple eigths notes." ;
         ], [
-            rdf:value: 2 ;
+            rdf:value 2 ;
             rdfs:label "1/8." ;
             rdfs:comment "Dotted eigths notes." ;
         ];
