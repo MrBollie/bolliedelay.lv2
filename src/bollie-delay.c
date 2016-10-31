@@ -163,8 +163,8 @@ static void activate(LV2_Handle instance) {
 /**
 * Low Cut filter function.
 */
-static void lowcut(BollieDelay* self, unsigned int index, float* out_l, 
-    float* out_r) {
+static void lowcut(BollieDelay* self, unsigned int index, float* sample_l, 
+    float* sample_r) {
 
     FilterBuffer* fbuf = &self->fil_buf_low;    
 
@@ -187,17 +187,17 @@ static void lowcut(BollieDelay* self, unsigned int index, float* out_l,
     // Left channel
     fbuf->l[2] = fbuf->l[1];
     fbuf->l[1] = fbuf->l[0];
-    fbuf->l[0] = self->input_l[index];
+    fbuf->l[0] = *sample_l;
 
     fbuf->fil_l[2] = fbuf->fil_l[1];
     fbuf->fil_l[1] = fbuf->fil_l[0];
 
     if (index < 3 && !fbuf->filled) {
-        fbuf->fil_l[index] = self->input_l[index]; 
-        *out_l = 0;
+        fbuf->fil_l[index] = *sample_l; 
+        *sample_l = 0;
     }
     else {
-        *out_l = fbuf->fil_l[0] = 
+        *sample_l = fbuf->fil_l[0] = 
             (b0 / a0 * fbuf->l[0]) +
             (b1 / a0 * fbuf->l[1]) +
             (b2 / a0 * fbuf->l[2]) -
@@ -215,11 +215,11 @@ static void lowcut(BollieDelay* self, unsigned int index, float* out_l,
     fbuf->fil_r[1] = fbuf->fil_r[0];
 
     if (index < 3 && !fbuf->filled) {
-        fbuf->fil_r[index] = self->input_r[index]; 
-        *out_r = 0;
+        fbuf->fil_r[index] = *sample_r; 
+        *sample_r = 0;
     }
     else {
-        *out_r = fbuf->fil_r[0] = 
+        *sample_r = fbuf->fil_r[0] = 
             (b0 / a0 * fbuf->r[0]) +
             (b1 / a0 * fbuf->r[1]) +
             (b2 / a0 * fbuf->r[2]) -
@@ -233,8 +233,8 @@ static void lowcut(BollieDelay* self, unsigned int index, float* out_l,
 /**
 * High Cut filter function.
 */
-static void highcut(BollieDelay* self, unsigned int index, float* out_l, 
-    float* out_r) {
+static void highcut(BollieDelay* self, unsigned int index, float* sample_l, 
+    float* sample_r) {
 
     FilterBuffer* fbuf = &self->fil_buf_high;    
 
@@ -257,17 +257,17 @@ static void highcut(BollieDelay* self, unsigned int index, float* out_l,
     // Left channel
     fbuf->l[2] = fbuf->l[1];
     fbuf->l[1] = fbuf->l[0];
-    fbuf->l[0] = self->input_l[index];
+    fbuf->l[0] = *sample_l;
 
     fbuf->fil_l[2] = fbuf->fil_l[1];
     fbuf->fil_l[1] = fbuf->fil_l[0];
 
     if (index < 3 && !fbuf->filled) {
-        fbuf->fil_l[index] = self->input_l[index]; 
-        *out_l = 0;
+        fbuf->fil_l[index] = *sample_l; 
+        *sample_l = 0;
     }
     else {
-        *out_l = fbuf->fil_l[0] = 
+        *sample_l = fbuf->fil_l[0] = 
             (b0 / a0 * fbuf->l[0]) +
             (b1 / a0 * fbuf->l[1]) +
             (b2 / a0 * fbuf->l[2]) -
@@ -279,17 +279,17 @@ static void highcut(BollieDelay* self, unsigned int index, float* out_l,
     // Right channel
     fbuf->r[2] = fbuf->r[1];
     fbuf->r[1] = fbuf->r[0];
-    fbuf->r[0] = self->input_r[index];
+    fbuf->r[0] = *sample_r;
 
     fbuf->fil_r[2] = fbuf->fil_r[1];
     fbuf->fil_r[1] = fbuf->fil_r[0];
 
     if (index < 3 && !fbuf->filled) {
-        fbuf->fil_r[index] = self->input_r[index]; 
-        *out_r = 0;
+        fbuf->fil_r[index] = *sample_r; 
+        *sample_r = 0;
     }
     else {
-        *out_r = fbuf->fil_r[0] = 
+        *sample_r = fbuf->fil_r[0] = 
             (b0 / a0 * fbuf->r[0]) +
             (b1 / a0 * fbuf->r[1]) +
             (b2 / a0 * fbuf->r[2]) -
@@ -337,6 +337,12 @@ static int calc_delay_time(int delay_time, int div) {
             break;
         case 2:
             return floor(delay_time / 4 * 3);
+            break;
+        case 3:
+            return floor(delay_time / 3);
+            break;
+        case 4:
+            return floor(delay_time / 4);
             break;
     }
     return delay_time;
@@ -386,8 +392,8 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         float old_s_r = self->buffer_r[self->rr_pos];
 
         // Filters
-        float cur_fs_l = 0;
-        float cur_fs_r = 0;
+        float cur_fs_l = self->input_l[i];
+        float cur_fs_r = self->input_r[i];
         lowcut(self, i, &cur_fs_l, &cur_fs_r);
         highcut(self, i, &cur_fs_l, &cur_fs_r);
 
