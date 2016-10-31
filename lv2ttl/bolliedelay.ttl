@@ -13,7 +13,7 @@
     foaf:homepage <http://ca9.eu/> .
 
 <https://ca9.eu/lv2/bolliedelay>
-    a lv2:Plugin, doap:Delay;
+    a lv2:Plugin, lv2:DelayPlugin;
     doap:license <http://usefulinc.com/doap/licenses/gpl> ;
     doap:maintainer <http://ca9.eu/bollie#me> ;
     doap:name "Bollie Delay";
@@ -70,7 +70,7 @@
         lv2:index 5 ;
         lv2:symbol "low_f" ;
         lv2:name "Low Cut Freq." ;
-        lv2:default 200.000 ;
+        lv2:default 20.000 ;
         lv2:minimum 20.000 ;
         lv2:maximum 2000.000 ;
         lv2:portProperty pprop:logarithmic ;
@@ -91,9 +91,9 @@
         lv2:index 7 ;
         lv2:symbol "high_f" ;
         lv2:name "High Cut Freq." ;
-        lv2:default 2000.0 ;
+        lv2:default 24000.0 ;
         lv2:minimum 200.0 ;
-        lv2:maximum 20000.0 ;
+        lv2:maximum 24000.0 ;
         lv2:portProperty pprop:logarithmic ;
         units:unit units:hz ;
     ] , [

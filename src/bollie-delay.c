@@ -8,6 +8,8 @@
 
 #define MAX_TAPE_LEN 1920001
 
+typedef enum { false, true } bool;
+
 typedef enum {
     BDL_DELAY       = 0,
     BDL_TAP         = 1,
@@ -27,6 +29,14 @@ typedef enum {
 } PortIdx;
 
 typedef struct {
+    float l[3];
+    float r[3];
+    float fil_l[3];
+    float fil_r[3];
+    bool filled;
+} FilterBuffer;
+
+typedef struct {
     float* delay;
     const float* tap;
     const float* mix;
@@ -44,10 +54,8 @@ typedef struct {
     float* output_r;
     float buffer_l[MAX_TAPE_LEN];
     float buffer_r[MAX_TAPE_LEN];
-    float buffer_low_l[3];
-    float buffer_low_r[3];
-    float buffer_high_l[3];
-    float buffer_high_r[3];
+    FilterBuffer fil_buf_low;
+    FilterBuffer fil_buf_high;
     double rate;
     int wl_pos;
     int wr_pos;
@@ -138,6 +146,9 @@ static void activate(LV2_Handle instance) {
         self->buffer_r[i] = 0;
     }
 
+    self->fil_buf_low.filled = false;
+    self->fil_buf_low.filled = false;
+
     // Reset the positions
     self->wl_pos = 0;
     self->wr_pos = 0;
@@ -146,6 +157,146 @@ static void activate(LV2_Handle instance) {
 
     // Reset tapping
     self->start_tap = 0;
+}
+
+
+/**
+* Low Cut filter function.
+*/
+static void lowcut(BollieDelay* self, unsigned int index, float* out_l, 
+    float* out_r) {
+
+    FilterBuffer* fbuf = &self->fil_buf_low;    
+
+    // Sample rate
+    float Fs = self->rate;
+    float Pi = 3.141592;   /* the value of Pi */
+
+    /* These floating point values implement the specific filter type */
+    float f0 = *self->low_f;       /* cut-off (or center) frequency in Hz */
+    float Q = *self->low_q;        /* filter Q */
+    float w0 = 2 * Pi * f0 / Fs;
+    float alpha = sin(w0) / (2 * Q);
+    float a0 = 1 + alpha;
+    float a1 = -2 * cos(w0);
+    float a2 = 1 - alpha;
+    float b0 = (1 + cos(w0)) / 2;
+    float b1 = -(1 + cos(w0));
+    float b2 = (1 + cos(w0)) / 2;
+
+    // Left channel
+    fbuf->l[2] = fbuf->l[1];
+    fbuf->l[1] = fbuf->l[0];
+    fbuf->l[0] = self->input_l[index];
+
+    fbuf->fil_l[2] = fbuf->fil_l[1];
+    fbuf->fil_l[1] = fbuf->fil_l[0];
+
+    if (index < 3 && !fbuf->filled) {
+        fbuf->fil_l[index] = self->input_l[index]; 
+        *out_l = 0;
+    }
+    else {
+        *out_l = fbuf->fil_l[0] = 
+            (b0 / a0 * fbuf->l[0]) +
+            (b1 / a0 * fbuf->l[1]) +
+            (b2 / a0 * fbuf->l[2]) -
+            (a1 / a0 * fbuf->fil_l[1]) -
+            (a2 / a0 * fbuf->fil_l[2]);
+        fbuf->filled = true;
+    }
+
+    // Right channel
+    fbuf->r[2] = fbuf->r[1];
+    fbuf->r[1] = fbuf->r[0];
+    fbuf->r[0] = self->input_r[index];
+
+    fbuf->fil_r[2] = fbuf->fil_r[1];
+    fbuf->fil_r[1] = fbuf->fil_r[0];
+
+    if (index < 3 && !fbuf->filled) {
+        fbuf->fil_r[index] = self->input_r[index]; 
+        *out_r = 0;
+    }
+    else {
+        *out_r = fbuf->fil_r[0] = 
+            (b0 / a0 * fbuf->r[0]) +
+            (b1 / a0 * fbuf->r[1]) +
+            (b2 / a0 * fbuf->r[2]) -
+            (a1 / a0 * fbuf->fil_r[1]) -
+            (a2 / a0 * fbuf->fil_r[2]);
+        fbuf->filled = true;
+    }
+}
+
+
+/**
+* High Cut filter function.
+*/
+static void highcut(BollieDelay* self, unsigned int index, float* out_l, 
+    float* out_r) {
+
+    FilterBuffer* fbuf = &self->fil_buf_high;    
+
+    // Sample rate
+    float Fs = self->rate;
+    float Pi = 3.141592;   /* the value of Pi */
+
+    /* These floating point values implement the specific filter type */
+    float f0 = *self->high_f;       /* cut-off (or center) frequency in Hz */
+    float Q = *self->high_q;        /* filter Q */
+    float w0 = 2 * Pi * f0 / Fs;
+    float alpha = sin(w0) / (2 * Q);
+    float a0 = 1 + alpha;
+    float a1 = -2 * cos(w0);
+    float a2 = 1 - alpha;
+    float b0 = (1 - cos(w0)) / 2;
+    float b1 = 1 - cos(w0);
+    float b2 = (1 - cos(w0)) / 2;
+
+    // Left channel
+    fbuf->l[2] = fbuf->l[1];
+    fbuf->l[1] = fbuf->l[0];
+    fbuf->l[0] = self->input_l[index];
+
+    fbuf->fil_l[2] = fbuf->fil_l[1];
+    fbuf->fil_l[1] = fbuf->fil_l[0];
+
+    if (index < 3 && !fbuf->filled) {
+        fbuf->fil_l[index] = self->input_l[index]; 
+        *out_l = 0;
+    }
+    else {
+        *out_l = fbuf->fil_l[0] = 
+            (b0 / a0 * fbuf->l[0]) +
+            (b1 / a0 * fbuf->l[1]) +
+            (b2 / a0 * fbuf->l[2]) -
+            (a1 / a0 * fbuf->fil_l[1]) -
+            (a2 / a0 * fbuf->fil_l[2]);
+        fbuf->filled = true;
+    }
+
+    // Right channel
+    fbuf->r[2] = fbuf->r[1];
+    fbuf->r[1] = fbuf->r[0];
+    fbuf->r[0] = self->input_r[index];
+
+    fbuf->fil_r[2] = fbuf->fil_r[1];
+    fbuf->fil_r[1] = fbuf->fil_r[0];
+
+    if (index < 3 && !fbuf->filled) {
+        fbuf->fil_r[index] = self->input_r[index]; 
+        *out_r = 0;
+    }
+    else {
+        *out_r = fbuf->fil_r[0] = 
+            (b0 / a0 * fbuf->r[0]) +
+            (b1 / a0 * fbuf->r[1]) +
+            (b2 / a0 * fbuf->r[2]) -
+            (a1 / a0 * fbuf->fil_r[1]) -
+            (a2 / a0 * fbuf->fil_r[2]);
+        fbuf->filled = true;
+    }
 }
 
 
@@ -218,7 +369,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         d_samples_r = MAX_TAPE_LEN;
 
     // Loop over the block of audio we got
-    for(int i = 0 ; i < n_samples ; i++) {
+    for(unsigned int i = 0 ; i < n_samples ; i++) {
 
         // Derive the read position
         self->rl_pos = self->wl_pos - d_samples_l;
@@ -226,16 +377,19 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         
         // Rewind if neccessary
         if (self->rl_pos < 0)
-            self->rl_pos = d_samples_l + self->rl_pos;
+            self->rl_pos = d_samples_l+1 + self->rl_pos;
         if (self->rr_pos < 0)
-            self->rr_pos = d_samples_r + self->rr_pos;
+            self->rr_pos = d_samples_r+1 + self->rr_pos;
 
         // Old samples
         float old_s_l = self->buffer_l[self->rl_pos];
         float old_s_r = self->buffer_r[self->rr_pos];
 
-        float cur_fs_l = self->input_l[i];
-        float cur_fs_r = self->input_r[i];
+        // Filters
+        float cur_fs_l = 0;
+        float cur_fs_r = 0;
+        lowcut(self, i, &cur_fs_l, &cur_fs_r);
+        highcut(self, i, &cur_fs_l, &cur_fs_r);
 
         // Left Channel
         self->buffer_l[self->wl_pos] = 
@@ -260,8 +414,8 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             + self->input_r[i] * (100 - *self->mix) / 100;
 
         // Iterate write position
-        self->wl_pos = (self->wl_pos+1 >= d_samples_l ? 0 : self->wl_pos+1);
-        self->wr_pos = (self->wr_pos+1 >= d_samples_r ? 0 : self->wr_pos+1);
+        self->wl_pos = (self->wl_pos+1 >= d_samples_l+1 ? 0 : self->wl_pos+1);
+        self->wr_pos = (self->wr_pos+1 >= d_samples_r+1 ? 0 : self->wr_pos+1);
     }
 }
 
