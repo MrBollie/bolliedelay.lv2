@@ -138,9 +138,6 @@ static void activate(LV2_Handle instance) {
         self->buffer_r[i] = 0;
     }
 
-    // delete previously filtered samples
-    self->prev_filtered_sample_l = self->prev_filtered_sample_r = 0;
-
     // Reset the positions
     self->wl_pos = 0;
     self->wr_pos = 0;
@@ -233,12 +230,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         if (self->rr_pos < 0)
             self->rr_pos = d_samples_r + self->rr_pos;
 
-        float cur_fs_l = self->input_l[i]:
-        float cur_fs_r = self->input_r[i]:
+        // Old samples
+        float old_s_l = self->buffer_l[self->rl_pos];
+        float old_s_r = self->buffer_r[self->rr_pos];
 
-        // Copy input to buffer and mix it with the previous content
-        float old_s_l = self->buffer_l[self->rl_pos]; // previous sample left
-        float old_s_r = self->buffer_r[self->rr_pos]; // previous sample right
+        float cur_fs_l = self->input_l[i];
+        float cur_fs_r = self->input_r[i];
 
         // Left Channel
         self->buffer_l[self->wl_pos] = 
