@@ -1,0 +1,218 @@
+@import url(/fonts/nexa/stylesheet.css);
+@import url(/fonts/questrial/stylesheet.css);
+
+
+/* = CONTAINER
+================================================ */
+.bolliedelay {
+    background-image:url(/resources/background.png{{{ns}}});
+    background-position:center center;
+    background-repeat:no-repeat;
+    background-size:640px 320px;
+    border-radius: 21px;
+    height:312px;
+    position:absolute;
+    width:623px;
+}
+
+/* = Labels
+================================================ */
+.bolliedelay .bollie-brand {
+    bottom: 50px;
+    cursor:default;
+    left: 40px;
+    position:absolute;
+    text-align:center;
+    width: 25px;
+}
+
+.bolliedelay .bollie-brand h1 {
+    color:#aaa;
+    font-family:"Nexa";
+    font-size:28px;
+    margin:0;
+    padding:0;
+    text-shadow: -2px 2px 2px #444;
+    transform: rotate(270deg);
+    -webkit-transform: rotate(270deg);
+}
+
+.bolliedelay .x42-plugin-name {
+    bottom:48px;
+    overflow:hidden;
+    position:absolute;
+    right:38px;
+    text-align:center;
+    text-shadow: 0 0 1px #ccc;
+}
+
+.bolliedelay .x42-plugin-name h1 {
+    font-family:"Questrial";
+    font-size:21px;
+    line-height:1;
+}
+
+/* = LIGHT ON/OFF
+================================================ */
+.bolliedelay .mod-light {
+    background-position:center center;
+    background-repeat:no-repeat;
+    bottom:58px;
+    height:32px;
+    width:32px;
+    left:125px;
+    position:absolute;
+}
+
+/* = FOOTSWITCH
+================================================ */
+.bolliedelay .mod-footswitch {
+    background-image:url(/resources/footswitch.png{{{ns}}});
+    background-position:bottom center;
+    background-repeat:no-repeat;
+    background-size:auto 132px;
+    cursor:pointer;
+    height:66px;
+    width: 66px;
+    margin: 4px 50px 0 auto;
+    display: inline-block;
+}
+
+.bolliedelay .mod-footswitch.on {
+    background-position: top center !important;
+}
+
+
+/* = Push Buttons
+================================================ */
+.bolliedelay .mod-pushbutton {
+    background-image:url(/resources/footswitch.png{{{ns}}});
+    background-position:top center;
+    background-repeat:no-repeat;
+    background-size:auto 132px;
+    cursor:pointer;
+    height: 66px;
+    width: 66px;
+    margin: 4px auto 0 auto;
+}
+
+.bolliedelay .mod-pushbutton.on {
+    background-position: bottom center !important;
+}
+
+
+/* = KNOBS
+================================================ */
+.bolliedelay .mod-control-group {
+    margin:20px 20px 5px 20px !important;
+    position:relative;
+    text-align:center;
+    z-index:30;
+}
+.bolliedelay .mod-control-group.bottom {
+    margin:0px 20px 0px 20px !important;
+    position:relative;
+    text-align:center;
+    z-index:30;
+}
+.bolliedelay .top {
+    margin-top:20px !important;
+}
+
+.bolliedelay .mod-control-group .mod-knob {
+    overflow:hidden;
+    position:relative;
+}
+
+.bolliedelay .mod-control-group .mod-knob > span.mod-knob-title {
+    bottom:12px;
+    cursor:default;
+    display:block;
+    font-size:11px;
+    font-weight:bold;
+    height:12px;
+    left:0;
+    line-height:1;
+    margin:0;
+    overflow:hidden;
+    padding:0;
+    position:absolute;
+    right:0;
+    text-transform:uppercase;
+    color: #efefef;
+}
+
+.bolliedelay .mod-control-group .mod-knob .mod-knob-value {
+    bottom:0px;
+    font-size:11px;
+    left:0;
+    line-height:1;
+    position:absolute;
+    right:0;
+    z-index:60;
+    color: #000000;
+    background-color: #aaaaaa;
+    padding: 1px;
+}
+
+.bolliedelay .mod-control-group .mod-knob .mod-knob-image {
+    background-image:url(/resources/aluminium.png{{{ns}}});
+    background-repeat:no-repeat;
+    background-size:auto 60px;
+    height:60px;
+    width:60px;
+    margin:0 auto;
+}
+
+.bolliedelay .mod-control-group .mod-knob {
+    display:inline-block;
+    height:88px;
+        margin: 1px 5px;
+}
+
+/* = ENUMERATED LIST
+================================================ */
+
+.bolliedelay .mod-enumerated {
+    background-image:url(/resources/dropdown-arrow-black.png{{{ns}}});
+    background-position:right center;
+    background-repeat:no-repeat;
+    font-size:11px;
+    font-weight:bold;
+    left:0;
+    line-height:2;
+    overflow:hidden;
+    position:absolute;
+    right:0;
+    text-align:center;
+}
+
+.bolliedelay .mod-enumerated .mod-enumerated-selected {
+    padding:3px 9px;
+}
+
+.bolliedelay .mod-enumerated .mod-enumerated-list {
+    background-color:rgba(0,0,0,.9);
+    color:#fff;
+    display:none;
+    height:115px;
+    overflow:auto;
+    position:relative;
+}
+
+.bolliedelay .mod-enumerated .mod-enumerated-list > div {
+    padding:3px 9px;
+}
+
+.bolliedelay .mod-enumerated .mod-enumerated-list > div:hover {
+    background-color:rgba(255,255,255,.2);
+    cursor:pointer;
+}
+
+/* = COLORS
+================================================ */
+.bolliedelay h1,
+.bolliedelay .mod-enumerated,
+.bolliedelay h1 {
+    border-color:black;
+}

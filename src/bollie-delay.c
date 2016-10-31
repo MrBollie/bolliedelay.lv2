@@ -14,13 +14,16 @@ typedef enum {
     BDL_MIX         = 2,
     BDL_DECAY       = 3,
     BDL_CROSSF      = 4,
-    BDL_TONE        = 5,
-    BDL_DIV_L       = 6,
-    BDL_DIV_R       = 7,
-    BDL_INPUT_L     = 8,
-    BDL_INPUT_R     = 9,
-    BDL_OUTPUT_L    = 10,
-    BDL_OUTPUT_R    = 11
+    BDL_LOW_F       = 5,
+    BDL_LOW_Q       = 6,
+    BDL_HIGH_F      = 7,
+    BDL_HIGH_Q      = 8,
+    BDL_DIV_L       = 9,
+    BDL_DIV_R       = 10,
+    BDL_INPUT_L     = 11,
+    BDL_INPUT_R     = 12,
+    BDL_OUTPUT_L    = 13,
+    BDL_OUTPUT_R    = 14
 } PortIdx;
 
 typedef struct {
@@ -29,7 +32,10 @@ typedef struct {
     const float* mix;
     const float* decay;
     const float* crossf;
-    const float* tone;
+    const float* low_f;
+    const float* low_q;
+    const float* high_f;
+    const float* high_q;
     const float* div_l;
     const float* div_r;
     const float* input_l;
@@ -38,8 +44,10 @@ typedef struct {
     float* output_r;
     float buffer_l[MAX_TAPE_LEN];
     float buffer_r[MAX_TAPE_LEN];
-    float prev_filtered_sample_l;
-    float prev_filtered_sample_r;
+    float buffer_low_l[3];
+    float buffer_low_r[3];
+    float buffer_high_l[3];
+    float buffer_high_r[3];
     double rate;
     int wl_pos;
     int wr_pos;
@@ -85,8 +93,17 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_CROSSF:
             self->crossf = data;
             break;
-        case BDL_TONE:
-            self->tone = data;
+        case BDL_LOW_F:
+            self->low_f = data;
+            break;
+        case BDL_LOW_Q:
+            self->low_q = data;
+            break;
+        case BDL_HIGH_F:
+            self->high_f = data;
+            break;
+        case BDL_HIGH_Q:
+            self->high_q = data;
             break;
         case BDL_DIV_L:
             self->div_l = data;
@@ -216,26 +233,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         if (self->rr_pos < 0)
             self->rr_pos = d_samples_r + self->rr_pos;
 
-        // Store samples for filtering
-        float cur_fs_l = self->input_l[i];
-        float cur_fs_r = self->input_r[i];
-        float a = *self->tone / 100;
+        float cur_fs_l = self->input_l[i]:
+        float cur_fs_r = self->input_r[i]:
 
-        // If we have a previous filtered sample, then apply the lowpass to the 
-        // current one
-        if (self->prev_filtered_sample_l > 0 
-            && self->prev_filtered_sample_r > 0) {
-            cur_fs_l = a * cur_fs_l + (1-a) * self->prev_filtered_sample_l;
-            cur_fs_r = a * cur_fs_r + (1-a) * self->prev_filtered_sample_r;
-        }
-
-        // Store for next filter run
-        self->prev_filtered_sample_l = cur_fs_l;
-        self->prev_filtered_sample_r = cur_fs_r;
-            
         // Copy input to buffer and mix it with the previous content
-        float old_s_l = self->buffer_l[self->wl_pos]; // previous sample left
-        float old_s_r = self->buffer_r[self->wr_pos]; // previous sample right
+        float old_s_l = self->buffer_l[self->rl_pos]; // previous sample left
+        float old_s_r = self->buffer_r[self->rr_pos]; // previous sample right
 
         // Left Channel
         self->buffer_l[self->wl_pos] = 
