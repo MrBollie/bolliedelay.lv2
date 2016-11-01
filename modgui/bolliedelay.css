@@ -94,10 +94,28 @@
     height: 66px;
     width: 66px;
     margin: 4px auto 0 auto;
+    display: inline-block;
 }
 
 .bolliedelay .mod-pushbutton.on {
     background-position: bottom center !important;
+}
+
+/* = Toggle
+================================================ */
+.bolliedelay .mod-toggle {
+    background-image:url(/resources/toggle.png{{{ns}}});
+    background-position:bottom center;
+    background-repeat:no-repeat;
+    background-size:auto 120px;
+    cursor:pointer;
+    height: 60px;
+    width: 43px;
+    margin: 4px auto 0 auto;
+}
+
+.bolliedelay .mod-toggle.on {
+    background-position: top center !important;
 }
 
 
