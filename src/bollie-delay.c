@@ -16,16 +16,18 @@ typedef enum {
     BDL_MIX         = 2,
     BDL_DECAY       = 3,
     BDL_CROSSF      = 4,
-    BDL_LOW_F       = 5,
-    BDL_LOW_Q       = 6,
-    BDL_HIGH_F      = 7,
-    BDL_HIGH_Q      = 8,
-    BDL_DIV_L       = 9,
-    BDL_DIV_R       = 10,
-    BDL_INPUT_L     = 11,
-    BDL_INPUT_R     = 12,
-    BDL_OUTPUT_L    = 13,
-    BDL_OUTPUT_R    = 14
+    BDL_LOW_ON      = 5,
+    BDL_LOW_F       = 6,
+    BDL_LOW_Q       = 7,
+    BDL_HIGH_ON      = 8,
+    BDL_HIGH_F      = 9,
+    BDL_HIGH_Q      = 10,
+    BDL_DIV_L       = 11,
+    BDL_DIV_R       = 12,
+    BDL_INPUT_L     = 13,
+    BDL_INPUT_R     = 14,
+    BDL_OUTPUT_L    = 15,
+    BDL_OUTPUT_R    = 16
 } PortIdx;
 
 typedef struct {
@@ -42,8 +44,10 @@ typedef struct {
     const float* mix;
     const float* decay;
     const float* crossf;
+    const float* low_on;
     const float* low_f;
     const float* low_q;
+    const float* high_on;
     const float* high_f;
     const float* high_q;
     const float* div_l;
@@ -101,11 +105,17 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_CROSSF:
             self->crossf = data;
             break;
+        case BDL_LOW_ON:
+            self->low_on = data;
+            break;
         case BDL_LOW_F:
             self->low_f = data;
             break;
         case BDL_LOW_Q:
             self->low_q = data;
+            break;
+        case BDL_HIGH_ON:
+            self->high_on = data;
             break;
         case BDL_HIGH_F:
             self->high_f = data;
@@ -167,6 +177,12 @@ static void lowcut(BollieDelay* self, unsigned int index, float* sample_l,
     float* sample_r) {
 
     FilterBuffer* fbuf = &self->fil_buf_low;    
+
+    // If switched off, leave the samples untouched and mark the buffer empty
+    if (*self->low_on == 0) {
+        fbuf->filled = false;
+        return;
+    }
 
     // Sample rate
     float Fs = self->rate;
@@ -237,6 +253,12 @@ static void highcut(BollieDelay* self, unsigned int index, float* sample_l,
     float* sample_r) {
 
     FilterBuffer* fbuf = &self->fil_buf_high;    
+
+    // If switched off, leave the samples untouched and mark the buffer empty
+    if (*self->high_on == 0) {
+        fbuf->filled = false;
+        return;
+    }
 
     // Sample rate
     float Fs = self->rate;
