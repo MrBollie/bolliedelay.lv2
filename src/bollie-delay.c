@@ -336,12 +336,15 @@ static int calc_delay_time(int delay_time, int div) {
             return floor(delay_time / 2);
             break;
         case 2:
-            return floor(delay_time / 4 * 3);
+            return floor(delay_time / 2);
             break;
         case 3:
-            return floor(delay_time / 3);
+            return floor(delay_time / 4 * 3);
             break;
         case 4:
+            return floor(delay_time / 3);
+            break;
+        case 5:
             return floor(delay_time / 4);
             break;
     }
