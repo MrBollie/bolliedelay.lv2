@@ -17,38 +17,21 @@
 
 /* = Labels
 ================================================ */
-.bolliedelay .bollie-brand {
-    bottom: 50px;
-    cursor:default;
-    left: 40px;
-    position:absolute;
-    text-align:center;
-    width: 25px;
-}
 
-.bolliedelay .bollie-brand h1 {
-    color:#aaa;
-    font-family:"Nexa";
-    font-size:28px;
-    margin:0;
-    padding:0;
-    text-shadow: -2px 2px 2px #444;
-    transform: rotate(270deg);
-    -webkit-transform: rotate(270deg);
-}
-
-.bolliedelay .x42-plugin-name {
-    bottom:48px;
+.bolliedelay .bollie-plugin-name {
     overflow:hidden;
     position:absolute;
-    right:38px;
+    right:25px;
+    bottom: 90px;
     text-align:center;
-    text-shadow: 0 0 1px #ccc;
+    text-transform:uppercase;
 }
 
-.bolliedelay .x42-plugin-name h1 {
-    font-family:"Questrial";
-    font-size:21px;
+.bolliedelay .bollie-plugin-name h1 {
+    font-family:"cooper hewitt", Sans-serif !important;
+    font-weight: bold;
+    font-size:80px;
+    color: #898989;
     line-height:1;
 }
 
@@ -74,7 +57,7 @@
     cursor:pointer;
     height:66px;
     width: 66px;
-    margin: 4px 50px 0 auto;
+    margin: 4px 75px 0 auto;
     display: inline-block;
 }
 
@@ -124,12 +107,14 @@
 .bolliedelay .mod-control-group {
     margin:20px 20px 5px 20px !important;
     position:relative;
-    text-align:center;
+    text-align:left;
     z-index:30;
 }
 .bolliedelay .mod-control-group.bottom {
     margin:0px 20px 0px 20px !important;
-    position:relative;
+    position:absolute;
+    bottom: 5px;
+    right: 150px;
     text-align:center;
     z-index:30;
 }

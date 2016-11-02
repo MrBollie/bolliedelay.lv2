@@ -12,12 +12,12 @@
           <span class="mod-knob-title">Blend</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="mix"></div>
        </div>
-       <div class="mod-knob" title="Feedback determines how much is feed back to the same channel.">
+       <div class="mod-knob" title="Feedback determines how much is fed back to the same channel.">
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="feedback"></div>
           <span class="mod-knob-title">Feedback</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="feedback"></div>
        </div>
-       <div class="mod-knob" title="Crossfeed determines how much is feed to the opposite channel.">
+       <div class="mod-knob" title="Crossfeed determines how much is fed to the opposite channel.">
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="crossf"></div>
           <span class="mod-knob-title">Crossfeed</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="crossf"></div>
@@ -42,6 +42,14 @@
           <span class="mod-knob-title">High Q</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="high_q"></div>
        </div>
+        <div class="mod-knob" title="Switch on/off low cut.">
+            <div class="mod-toggle off" mod-role="input-control-port" mod-port-symbol="low_on" mod-widget="switch"></div>
+	        <span class="mod-knob-title">LCF on</span>
+       </div>
+        <div class="mod-knob" title="Switch on/off high cut.">
+            <div class="mod-toggle off" mod-role="input-control-port" mod-port-symbol="high_on" mod-widget="switch"></div>
+	        <span class="mod-knob-title">HCF on</span>
+       </div>
        <div class="mod-knob" title="Delay Time Division Left">
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="div_l"></div>
           <span class="mod-knob-title">Div. L</span>
@@ -51,14 +59,6 @@
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="div_r"></div>
           <span class="mod-knob-title">Div. R</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="div_r"></div>
-       </div>
-        <div class="mod-knob" title="Switch on/off low cut.">
-            <div class="mod-toggle off" mod-role="input-control-port" mod-port-symbol="low_on" mod-widget="switch"></div>
-	        <span class="mod-knob-title">LCF on</span>
-       </div>
-        <div class="mod-knob" title="Switch on/off high cut.">
-            <div class="mod-toggle off" mod-role="input-control-port" mod-port-symbol="high_on" mod-widget="switch"></div>
-	        <span class="mod-knob-title">HCF on</span>
        </div>
     </div>
     
@@ -72,6 +72,7 @@
 	        <span class="mod-knob-title">Tap</span>
         </div>
     </div>
+    <div class="bollie-plugin-name"><h1>Delay</h1></div>
 
     <div class="mod-pedal-input">
         {{#effect.ports.audio.input}}
