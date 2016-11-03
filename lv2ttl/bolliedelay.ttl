@@ -4,6 +4,7 @@
 @prefix pprop: <http://lv2plug.in/ns/ext/port-props#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mod: <http://moddevices.com/ns/mod#>.
 @prefix units: <http://lv2plug.in/ns/extensions/units#> .
 
 <http://ca9.eu/bollie#me>
@@ -27,6 +28,9 @@
         lv2:default 333 ;
         lv2:minimum 0 ;
         lv2:maximum 10000 ;
+        lv2:portProperty mod:tapTempo ; 
+        lv2:designation  time:beatsPerMinute ;
+        units:unit units:ms ;
     ] , [
         a lv2:InputPort ,
             lv2:ControlPort ;
