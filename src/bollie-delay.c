@@ -12,7 +12,7 @@
 typedef enum { false, true } bool;
 
 typedef enum {
-    BDL_DELAY       = 0,
+    BDL_DELAY_BPM   = 0,
     BDL_TAP         = 1,
     BDL_MIX         = 2,
     BDL_DECAY       = 3,
@@ -32,15 +32,7 @@ typedef enum {
 } PortIdx;
 
 typedef struct {
-    float l[3];
-    float r[3];
-    float fil_l[3];
-    float fil_r[3];
-    bool filled;
-} FilterBuffer;
-
-typedef struct {
-    float* delay;
+    float* delay_bpm;
     const float* tap;
     const float* mix;
     const float* decay;
@@ -57,12 +49,11 @@ typedef struct {
     const float* input_r;
     float* output_l;
     float* output_r;
+    double rate;
 
     // filter
     float buffer_l[MAX_TAPE_LEN];
     float buffer_r[MAX_TAPE_LEN];
-    FilterBuffer fil_buf_low;
-    FilterBuffer fil_buf_high;
 
     // New Filter
     BollieFilter filter_low_l;
@@ -70,12 +61,19 @@ typedef struct {
     BollieFilter filter_high_l;
     BollieFilter filter_high_r;
 
-    double rate;
+    // number of samples
+    int d_samples_l;
+    int d_samples_r;
+
+    // State variables
+    float cur_delay_bpm;
+    float cur_div_l;
+    float cur_div_r;
     int wl_pos;
     int wr_pos;
     int rl_pos;
     int rr_pos;
-    long int start_tap;
+    int start_tap;
 } BollieDelay;
 
 /**
@@ -100,8 +98,8 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
     BollieDelay *self = (BollieDelay*)instance;
 
     switch ((PortIdx)port) {
-        case BDL_DELAY:
-            self->delay = data;
+        case BDL_DELAY_BPM:
+            self->delay_bpm = data;
             break;
         case BDL_TAP:
             self->tap = data;
@@ -157,6 +155,7 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
 
 /**
 * This has to reset all the internal states of the plugin
+* \param self pointer to current plugin instance
 */
 static void activate(LV2_Handle instance) {
     BollieDelay* self = (BollieDelay*)instance;
@@ -166,20 +165,24 @@ static void activate(LV2_Handle instance) {
         self->buffer_r[i] = 0;
     }
 
+    // Initialize number of samples needed
+    self->d_samples_l = 0;
+    self->d_samples_r = 0;
+
     // Clear the filters
     bf_reset(&self->filter_low_l);
     bf_reset(&self->filter_low_r);
     bf_reset(&self->filter_high_l);
     bf_reset(&self->filter_high_r);
 
-    self->fil_buf_low.filled = false;
-    self->fil_buf_low.filled = false;
-
-    // Reset the positions
+    // Reset the positions & state variables
     self->wl_pos = 0;
     self->wr_pos = 0;
     self->rl_pos = 0;
     self->rr_pos = 0;
+    self->cur_delay_bpm = 0;
+    self->cur_div_l = 0;
+    self->cur_div_r = 0;
 
     // Reset tapping
     self->start_tap = 0;
@@ -187,163 +190,13 @@ static void activate(LV2_Handle instance) {
 
 
 /**
-* Low Cut filter function.
-*/
-static void lowcut(BollieDelay* self, unsigned int index, float* sample_l, 
-    float* sample_r) {
-
-    FilterBuffer* fbuf = &self->fil_buf_low;    
-
-    // If switched off, leave the samples untouched and mark the buffer empty
-    if (*self->low_on == 0) {
-        fbuf->filled = false;
-        return;
-    }
-
-    // Sample rate
-    float Fs = self->rate;
-    float Pi = 3.141592;   /* the value of Pi */
-
-    /* These floating point values implement the specific filter type */
-    float f0 = *self->low_f;       /* cut-off (or center) frequency in Hz */
-    float Q = *self->low_q;        /* filter Q */
-    float w0 = 2 * Pi * f0 / Fs;
-    float alpha = sin(w0) / (2 * Q);
-    float a0 = 1 + alpha;
-    float a1 = -2 * cos(w0);
-    float a2 = 1 - alpha;
-    float b0 = (1 + cos(w0)) / 2;
-    float b1 = -(1 + cos(w0));
-    float b2 = (1 + cos(w0)) / 2;
-
-    // Left channel
-    fbuf->l[2] = fbuf->l[1];
-    fbuf->l[1] = fbuf->l[0];
-    fbuf->l[0] = *sample_l;
-
-    fbuf->fil_l[2] = fbuf->fil_l[1];
-    fbuf->fil_l[1] = fbuf->fil_l[0];
-
-    if (index < 3 && !fbuf->filled) {
-        fbuf->fil_l[index] = *sample_l; 
-        *sample_l = 0;
-    }
-    else {
-        *sample_l = fbuf->fil_l[0] = 
-            (b0 / a0 * fbuf->l[0]) +
-            (b1 / a0 * fbuf->l[1]) +
-            (b2 / a0 * fbuf->l[2]) -
-            (a1 / a0 * fbuf->fil_l[1]) -
-            (a2 / a0 * fbuf->fil_l[2]);
-        fbuf->filled = true;
-    }
-
-    // Right channel
-    fbuf->r[2] = fbuf->r[1];
-    fbuf->r[1] = fbuf->r[0];
-    fbuf->r[0] = self->input_r[index];
-
-    fbuf->fil_r[2] = fbuf->fil_r[1];
-    fbuf->fil_r[1] = fbuf->fil_r[0];
-
-    if (index < 3 && !fbuf->filled) {
-        fbuf->fil_r[index] = *sample_r; 
-        *sample_r = 0;
-    }
-    else {
-        *sample_r = fbuf->fil_r[0] = 
-            (b0 / a0 * fbuf->r[0]) +
-            (b1 / a0 * fbuf->r[1]) +
-            (b2 / a0 * fbuf->r[2]) -
-            (a1 / a0 * fbuf->fil_r[1]) -
-            (a2 / a0 * fbuf->fil_r[2]);
-        fbuf->filled = true;
-    }
-}
-
-
-/**
-* High Cut filter function.
-*/
-static void highcut(BollieDelay* self, unsigned int index, float* sample_l, 
-    float* sample_r) {
-
-    FilterBuffer* fbuf = &self->fil_buf_high;    
-
-    // If switched off, leave the samples untouched and mark the buffer empty
-    if (*self->high_on == 0) {
-        fbuf->filled = false;
-        return;
-    }
-
-    // Sample rate
-    float Fs = self->rate;
-    float Pi = 3.141592;   /* the value of Pi */
-
-    /* These floating point values implement the specific filter type */
-    float f0 = *self->high_f;       /* cut-off (or center) frequency in Hz */
-    float Q = *self->high_q;        /* filter Q */
-    float w0 = 2 * Pi * f0 / Fs;
-    float alpha = sin(w0) / (2 * Q);
-    float a0 = 1 + alpha;
-    float a1 = -2 * cos(w0);
-    float a2 = 1 - alpha;
-    float b0 = (1 - cos(w0)) / 2;
-    float b1 = 1 - cos(w0);
-    float b2 = (1 - cos(w0)) / 2;
-
-    // Left channel
-    fbuf->l[2] = fbuf->l[1];
-    fbuf->l[1] = fbuf->l[0];
-    fbuf->l[0] = *sample_l;
-
-    fbuf->fil_l[2] = fbuf->fil_l[1];
-    fbuf->fil_l[1] = fbuf->fil_l[0];
-
-    if (index < 3 && !fbuf->filled) {
-        fbuf->fil_l[index] = *sample_l; 
-        *sample_l = 0;
-    }
-    else {
-        *sample_l = fbuf->fil_l[0] = 
-            (b0 / a0 * fbuf->l[0]) +
-            (b1 / a0 * fbuf->l[1]) +
-            (b2 / a0 * fbuf->l[2]) -
-            (a1 / a0 * fbuf->fil_l[1]) -
-            (a2 / a0 * fbuf->fil_l[2]);
-        fbuf->filled = true;
-    }
-
-    // Right channel
-    fbuf->r[2] = fbuf->r[1];
-    fbuf->r[1] = fbuf->r[0];
-    fbuf->r[0] = *sample_r;
-
-    fbuf->fil_r[2] = fbuf->fil_r[1];
-    fbuf->fil_r[1] = fbuf->fil_r[0];
-
-    if (index < 3 && !fbuf->filled) {
-        fbuf->fil_r[index] = *sample_r; 
-        *sample_r = 0;
-    }
-    else {
-        *sample_r = fbuf->fil_r[0] = 
-            (b0 / a0 * fbuf->r[0]) +
-            (b1 / a0 * fbuf->r[1]) +
-            (b2 / a0 * fbuf->r[2]) -
-            (a1 / a0 * fbuf->fil_r[1]) -
-            (a2 / a0 * fbuf->fil_r[2]);
-        fbuf->filled = true;
-    }
-}
-
-
-/**
 * Handles a tap on the tap button and calculates time differences
+* \param self pointer to current plugin instance
+* \return Beats per minute
 */
-static long int handle_tap(BollieDelay* self) {
+static float handle_tap(BollieDelay* self) {
 
-    long int d = 0;
+    float d = 0;
 
     struct timeval t_cur;
     gettimeofday(&t_cur, 0);
@@ -361,37 +214,45 @@ static long int handle_tap(BollieDelay* self) {
         }
     }
     self->start_tap = t_cur_ms;
-
-    return d;
+    return 60000 / d;	// convert to bpm
 }
+
 
 /**
 * Calculates number of samples used for divided delay times.
+* \param self pointer to current plugin instance.
+* \param div  divider
+* \return number of samples needed for the delay buffer
+* \todo divider enum
 */
-static int calc_delay_time(int delay_time, int div) {
+static int calc_delay_samples(BollieDelay* self, int div) {
+    // Calculate the samples needed 
+    float tap_bpm = *self->delay_bpm;
     switch(div) {
         case 1:
-            return floor(delay_time / 2);
+	    tap_bpm = *self->delay_bpm * 2 / 3;
             break;
         case 2:
-            return floor(delay_time / 2);
+	    tap_bpm = *self->delay_bpm / 2;
             break;
         case 3:
-            return floor(delay_time / 4 * 3);
+	    tap_bpm = *self->delay_bpm / 4 * 3;
             break;
         case 4:
-            return floor(delay_time / 3);
+	    tap_bpm = *self->delay_bpm / 3;
             break;
         case 5:
-            return floor(delay_time / 4);
+            tap_bpm = *self->delay_bpm / 4;
             break;
     }
-    return delay_time;
+    return floor(60 / tap_bpm * self->rate);
 }
 
 
 /**
 * Main process function of the plugin.
+* \param instance  handle of the current plugin
+* \param n_samples number of samples in this current input block.
 */
 static void run(LV2_Handle instance, uint32_t n_samples) {
     BollieDelay* self = (BollieDelay*)instance;
@@ -400,34 +261,42 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     if (*(self->tap) > 0) {
         long int d = handle_tap(self);
         if (d > 0) 
-            *self->delay = (float)d;
+            *self->delay_bpm = (float)d;
     }
 
-    // Calculate the number of samples for the currently set delay time
-    int ds = floor(*self->delay / 1000 * self->rate);
-    int d_samples_l = calc_delay_time(ds, *self->div_l);
-    int d_samples_r = calc_delay_time(ds, *self->div_r);
+    // Calculate the number of samples for the currently set delay time, if 
+    // parameters change
+    if (*self->delay_bpm != self->cur_delay_bpm ||
+        *self->div_l != self->cur_div_l ||
+        *self->div_r != self->cur_div_r
+    ) {
+    	self->d_samples_l = calc_delay_samples(self, *self->div_l);
+    	self->d_samples_r = calc_delay_samples(self, *self->div_r);
+	self->cur_delay_bpm = *self->delay_bpm;
+	self->cur_div_l = *self->div_l;
+	self->cur_div_r = *self->div_r;
+    }
 
     // Make sure, delay times don't exceed MAX_TAPE_LEN
-    if (d_samples_l > MAX_TAPE_LEN)
-        d_samples_l = MAX_TAPE_LEN;
+    if (self->d_samples_l+1 > MAX_TAPE_LEN)
+        self->d_samples_l = MAX_TAPE_LEN;
 
-    if (d_samples_r > MAX_TAPE_LEN)
-        d_samples_r = MAX_TAPE_LEN;
+    if (self->d_samples_r+1 > MAX_TAPE_LEN)
+        self->d_samples_r = MAX_TAPE_LEN;
 
     // Loop over the block of audio we got
     for(unsigned int i = 0 ; i < n_samples ; i++) {
+	// Derive new position
+	self->rl_pos = self->wl_pos - self->d_samples_l;
+	self->rr_pos = self->wr_pos - self->d_samples_r;
 
-        // Derive the read position
-        self->rl_pos = self->wl_pos - d_samples_l;
-        self->rr_pos = self->wr_pos - d_samples_r;
+        // Derive the read position and rewind if neccessary
+	if (self->rl_pos < 0)
+           self->rl_pos = self->d_samples_l+1 + self->rl_pos;
+
+	if (self->rr_pos < 0)
+           self->rr_pos = self->d_samples_r+1 + self->rr_pos;
         
-        // Rewind if neccessary
-        if (self->rl_pos < 0)
-            self->rl_pos = d_samples_l+1 + self->rl_pos;
-        if (self->rr_pos < 0)
-            self->rr_pos = d_samples_r+1 + self->rr_pos;
-
         // Old samples
         float old_s_l = self->buffer_l[self->rl_pos];
         float old_s_r = self->buffer_r[self->rr_pos];
@@ -435,9 +304,6 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         // Filters
         float cur_fs_l = self->input_l[i];
         float cur_fs_r = self->input_r[i];
-        /*
-        lowcut(self, i, &cur_fs_l, &cur_fs_r);
-        highcut(self, i, &cur_fs_l, &cur_fs_r);*/
 
         // Apply the filter if enabled
         if (*self->low_on) {
@@ -483,8 +349,10 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             + self->input_r[i] * (100 - *self->mix) / 100;
 
         // Iterate write position
-        self->wl_pos = (self->wl_pos+1 >= d_samples_l+1 ? 0 : self->wl_pos+1);
-        self->wr_pos = (self->wr_pos+1 >= d_samples_r+1 ? 0 : self->wr_pos+1);
+        self->wl_pos 
+	   = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
+        self->wr_pos 
+           = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
     }
 }
 
