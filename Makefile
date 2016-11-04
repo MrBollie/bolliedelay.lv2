@@ -22,7 +22,13 @@ bolliedelay: $(BUILDDIR) $(BUILDDIR)/bolliedelay$(LIB_EXT) $(BUILDDIR)/manifest.
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
 
-$(BUILDDIR)/bolliedelay$(LIB_EXT): src/bollie-delay.c
+$(BUILDDIR)/bolliefilter.o: src/bolliefilter.c
+	$(CC) $^ $(BUILD_C_FLAGS) $(LINK_FLAGS) -lm -o $@ -c
+
+$(BUILDDIR)/bolliedelay.o: src/bollie-delay.c
+	$(CC) $^ $(BUILD_C_FLAGS) $(LINK_FLAGS) -lm -o $@ -c
+
+$(BUILDDIR)/bolliedelay$(LIB_EXT): $(BUILDDIR)/bolliefilter.o $(BUILDDIR)/bolliedelay.o
 	$(CC) $^ $(BUILD_C_FLAGS) $(LINK_FLAGS) -lm $(SHARED) -o $@
 
 $(BUILDDIR)/manifest.ttl: lv2ttl/manifest.ttl.in
@@ -41,7 +47,7 @@ $(BUILDDIR)/modgui: modgui
 # --------------------------------------------------------------
 
 clean:
-	rm -f $(BUILDDIR)/bolliedelay$(LIB_EXT) $(BUILDDIR)/*.ttl
+	rm -f $(BUILDDIR)/bolliedelay* $(BUILDDIR)/bolliefilter* $(BUILDDIR)/*.ttl
 	rm -fr $(BUILDDIR)/modgui
 
 # --------------------------------------------------------------

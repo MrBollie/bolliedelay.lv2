@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
+#include "bolliefilter.h"
 
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
 
@@ -56,10 +57,19 @@ typedef struct {
     const float* input_r;
     float* output_l;
     float* output_r;
+
+    // filter
     float buffer_l[MAX_TAPE_LEN];
     float buffer_r[MAX_TAPE_LEN];
     FilterBuffer fil_buf_low;
     FilterBuffer fil_buf_high;
+
+    // New Filter
+    BollieFilter filter_low_l;
+    BollieFilter filter_low_r;
+    BollieFilter filter_high_l;
+    BollieFilter filter_high_r;
+
     double rate;
     int wl_pos;
     int wr_pos;
@@ -155,6 +165,12 @@ static void activate(LV2_Handle instance) {
         self->buffer_l[i] = 0;
         self->buffer_r[i] = 0;
     }
+
+    // Clear the filters
+    bf_reset(&self->filter_low_l);
+    bf_reset(&self->filter_low_r);
+    bf_reset(&self->filter_high_l);
+    bf_reset(&self->filter_high_r);
 
     self->fil_buf_low.filled = false;
     self->fil_buf_low.filled = false;
@@ -419,8 +435,30 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         // Filters
         float cur_fs_l = self->input_l[i];
         float cur_fs_r = self->input_r[i];
+        /*
         lowcut(self, i, &cur_fs_l, &cur_fs_r);
-        highcut(self, i, &cur_fs_l, &cur_fs_r);
+        highcut(self, i, &cur_fs_l, &cur_fs_r);*/
+
+        // Apply the filter if enabled
+        if (*self->low_on) {
+            cur_fs_l = bf_lcf(cur_fs_l, *self->low_f, *self->low_q, self->rate,
+                            &self->filter_low_l
+            );
+            cur_fs_r = bf_lcf(cur_fs_r, *self->low_f, *self->low_q, self->rate,
+                            &self->filter_low_r
+            );
+        }
+ 
+        // Apply the filter if enabled
+        if (*self->high_on) {
+            cur_fs_l = bf_hcf(cur_fs_l, *self->high_f, *self->high_q, self->rate,
+                            &self->filter_high_l
+            );
+            cur_fs_r = bf_hcf(cur_fs_r, *self->high_f, *self->high_q, self->rate,
+                            &self->filter_high_r
+            );
+        }
+ 
 
         // Left Channel
         self->buffer_l[self->wl_pos] = 
