@@ -24,9 +24,9 @@
         a lv2:InputPort ,
             lv2:ControlPort ;
         lv2:index 0 ;
-        lv2:symbol "delay_bpm" ;
-        lv2:name "Delay";
-        lv2:default 333 ;
+        lv2:symbol "tempo" ;
+        lv2:name "Tempo";
+        lv2:default 120 ;
         lv2:minimum 0 ;
         lv2:maximum 10000 ;
         lv2:portProperty mod:tapTempo ; 

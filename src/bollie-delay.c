@@ -12,7 +12,7 @@
 typedef enum { false, true } bool;
 
 typedef enum {
-    BDL_DELAY_BPM   = 0,
+    BDL_TEMPO_BPM   = 0,
     BDL_TAP         = 1,
     BDL_MIX         = 2,
     BDL_DECAY       = 3,
@@ -32,7 +32,7 @@ typedef enum {
 } PortIdx;
 
 typedef struct {
-    float* delay_bpm;
+    float* tempo;
     const float* tap;
     const float* mix;
     const float* decay;
@@ -66,7 +66,7 @@ typedef struct {
     int d_samples_r;
 
     // State variables
-    float cur_delay_bpm;
+    float cur_tempo;
     float cur_div_l;
     float cur_div_r;
     int wl_pos;
@@ -98,8 +98,8 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
     BollieDelay *self = (BollieDelay*)instance;
 
     switch ((PortIdx)port) {
-        case BDL_DELAY_BPM:
-            self->delay_bpm = data;
+        case BDL_TEMPO_BPM:
+            self->tempo = data;
             break;
         case BDL_TAP:
             self->tap = data;
@@ -180,7 +180,7 @@ static void activate(LV2_Handle instance) {
     self->wr_pos = 0;
     self->rl_pos = 0;
     self->rr_pos = 0;
-    self->cur_delay_bpm = 0;
+    self->cur_tempo = 0;
     self->cur_div_l = 0;
     self->cur_div_r = 0;
 
@@ -227,25 +227,25 @@ static float handle_tap(BollieDelay* self) {
 */
 static int calc_delay_samples(BollieDelay* self, int div) {
     // Calculate the samples needed 
-    float tap_bpm = *self->delay_bpm;
+    float d = 60 / *self->tempo * self->rate;
     switch(div) {
         case 1:
-	    tap_bpm = *self->delay_bpm * 2 / 3;
+	    d = d * 2/3;
             break;
         case 2:
-	    tap_bpm = *self->delay_bpm / 2;
+	    d = d / 2;
             break;
         case 3:
-	    tap_bpm = *self->delay_bpm / 4 * 3;
+	    d = d / 4 * 3;
             break;
         case 4:
-	    tap_bpm = *self->delay_bpm / 3;
+	    d = d / 3;
             break;
         case 5:
-            tap_bpm = *self->delay_bpm / 4;
+            d = d / 4;
             break;
     }
-    return floor(60 / tap_bpm * self->rate);
+    return floor(d);
 }
 
 
@@ -261,18 +261,18 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     if (*(self->tap) > 0) {
         long int d = handle_tap(self);
         if (d > 0) 
-            *self->delay_bpm = (float)d;
+            *self->tempo = (float)d;
     }
 
     // Calculate the number of samples for the currently set delay time, if 
     // parameters change
-    if (*self->delay_bpm != self->cur_delay_bpm ||
+    if (*self->tempo != self->cur_tempo ||
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r
     ) {
     	self->d_samples_l = calc_delay_samples(self, *self->div_l);
     	self->d_samples_r = calc_delay_samples(self, *self->div_r);
-	self->cur_delay_bpm = *self->delay_bpm;
+	self->cur_tempo = *self->tempo;
 	self->cur_div_l = *self->div_l;
 	self->cur_div_r = *self->div_r;
     }
