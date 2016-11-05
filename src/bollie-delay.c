@@ -1,3 +1,29 @@
+/**
+    Bollie Delay - (c) 2016 Thomas Ebeling https://ca9.eu
+
+    This file is part of bolliedelay.lv2
+
+    bolliedelay.lv2 is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    bolliedelay.lv2 is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/**
+* \file bollie-delay.c
+* \author Bollie
+* \date 05 Nov 2016
+* \brief An LV2 tempo delay plugin with filters and tapping.
+*/
+
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
@@ -9,8 +35,16 @@
 
 #define MAX_TAPE_LEN 1920001
 
+
+/**
+* Make a bool type available. ;)
+*/
 typedef enum { false, true } bool;
 
+
+/**
+* Enumeration of LV2 ports
+*/
 typedef enum {
     BDL_TEMPO_BPM   = 0,
     BDL_TAP         = 1,
@@ -31,53 +65,59 @@ typedef enum {
     BDL_OUTPUT_R    = 16
 } PortIdx;
 
+
+/**
+* Struct for THE BollieDelay instance, the host is going to use.
+*/
 typedef struct {
-    float* tempo;
-    const float* tap;
-    const float* mix;
-    const float* decay;
-    const float* crossf;
-    const float* low_on;
-    const float* low_f;
-    const float* low_q;
-    const float* high_on;
-    const float* high_f;
-    const float* high_q;
-    const float* div_l;
-    const float* div_r;
-    const float* input_l;
-    const float* input_r;
-    float* output_l;
-    float* output_r;
-    double rate;
+    float* tempo;               ///< Tempo in BPM
+    const float* tap;           ///< Control port for tapping
+    const float* mix;           ///< mix/blend in percentage
+    const float* decay;         ///< decay in percentage
+    const float* crossf;        ///< crossfeed (0-50) between inputs
+    const float* low_on;        ///< LCF: 0=off, 1=on
+    const float* low_f;         ///< LCF cut off frequency
+    const float* low_q;         ///< LCF quality
+    const float* high_on;       ///< HCF: 0=off, 1=on
+    const float* high_f;        ///< HCF cuf off frequency
+    const float* high_q;        ///< HCF quality
+    const float* div_l;         ///< Divider enum "left"(0) input
+    const float* div_r;         ///< Divider enum "right"(1) input
+    const float* input_l;       ///< input0, left side
+    const float* input_r;       ///< input1, right side
+    float* output_l;            ///< output1, left side
+    float* output_r;            ///< output2, right side
+    double rate;                ///< Current sample rate
 
-    // filter
-    float buffer_l[MAX_TAPE_LEN];
-    float buffer_r[MAX_TAPE_LEN];
+    float buffer_l[MAX_TAPE_LEN];   ///< delay buffer left
+    float buffer_r[MAX_TAPE_LEN];   ///< delay buffer right
 
-    // New Filter
-    BollieFilter filter_low_l;
-    BollieFilter filter_low_r;
-    BollieFilter filter_high_l;
-    BollieFilter filter_high_r;
+    BollieFilter filter_low_l;      ///< LCF left
+    BollieFilter filter_low_r;      ///< LCF right
+    BollieFilter filter_high_l;     ///< HCF left
+    BollieFilter filter_high_r;     ///< HCF right
 
-    // number of samples
-    int d_samples_l;
-    int d_samples_r;
+    int d_samples_l; /**< Storing the max. number of samples for the current 
+                            delay time, left */
+    int d_samples_r; /**< Storing the max. number of samples for the current 
+                            delay time, left */
 
-    // State variables
-    float cur_tempo;
-    float cur_div_l;
-    float cur_div_r;
-    int wl_pos;
-    int wr_pos;
-    int rl_pos;
-    int rr_pos;
-    int start_tap;
+
+    float cur_tempo;    ///< state variable for current tempo set by tempo (above)
+    float cur_div_l;    ///< state var for current division, left side
+    float cur_div_r;    ///< state var for current division, right side
+    int wl_pos;         ///< current write position, left side
+    int wr_pos;         ///< current write position, right side
+    int rl_pos;         ///< current read position, left side
+    int rr_pos;         ///< current read position, right side
+    int start_tap;      ///< when did the last tap happen (ms since epoch)
 } BollieDelay;
+
 
 /**
 * Instantiates the plugin
+* Allocates memory for the BollieDelay object and returns a pointer as
+* LV2Handle.
 */
 static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
     const char* bundle_path, const LV2_Feature* const* features) {
@@ -93,6 +133,9 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
 
 /**
 * Used by the host to connect the ports of this plugin.
+* \param instance current LV2_Handle (will be cast to BollieDelay*)
+* \param port LV2 port index, maches the enum above.
+* \param data Pointer to the actual port data.
 */
 static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
     BollieDelay *self = (BollieDelay*)instance;
@@ -155,7 +198,7 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
 
 /**
 * This has to reset all the internal states of the plugin
-* \param self pointer to current plugin instance
+* \param instance pointer to current plugin instance
 */
 static void activate(LV2_Handle instance) {
     BollieDelay* self = (BollieDelay*)instance;
@@ -214,7 +257,7 @@ static float handle_tap(BollieDelay* self) {
         }
     }
     self->start_tap = t_cur_ms;
-    return 60000 / d;	// convert to bpm
+    return 60000 / d;   // convert to bpm
 }
 
 
@@ -230,16 +273,16 @@ static int calc_delay_samples(BollieDelay* self, int div) {
     float d = 60 / *self->tempo * self->rate;
     switch(div) {
         case 1:
-	    d = d * 2/3;
+        d = d * 2/3;
             break;
         case 2:
-	    d = d / 2;
+        d = d / 2;
             break;
         case 3:
-	    d = d / 4 * 3;
+        d = d / 4 * 3;
             break;
         case 4:
-	    d = d / 3;
+        d = d / 3;
             break;
         case 5:
             d = d / 4;
@@ -270,58 +313,76 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r
     ) {
-    	self->d_samples_l = calc_delay_samples(self, *self->div_l);
-    	self->d_samples_r = calc_delay_samples(self, *self->div_r);
-	self->cur_tempo = *self->tempo;
-	self->cur_div_l = *self->div_l;
-	self->cur_div_r = *self->div_r;
+        self->d_samples_l = calc_delay_samples(self, *self->div_l);
+        self->d_samples_r = calc_delay_samples(self, *self->div_r);
+        self->cur_tempo = *self->tempo;
+        self->cur_div_l = *self->div_l;
+        self->cur_div_r = *self->div_r;
+
+        /* The buffer always needs to be one sample bigger than the delay time.
+        In order to not exceed MAX_TAPE_LEN, cut the number of samples, if 
+        needed */
+        if (self->d_samples_l+1 > MAX_TAPE_LEN)
+            self->d_samples_l = MAX_TAPE_LEN-1;
+
+        if (self->d_samples_r+1 > MAX_TAPE_LEN)
+            self->d_samples_r = MAX_TAPE_LEN-1;
     }
 
-    // Make sure, delay times don't exceed MAX_TAPE_LEN
-    if (self->d_samples_l+1 > MAX_TAPE_LEN)
-        self->d_samples_l = MAX_TAPE_LEN;
-
-    if (self->d_samples_r+1 > MAX_TAPE_LEN)
-        self->d_samples_r = MAX_TAPE_LEN;
-
     // Loop over the block of audio we got
-    for(unsigned int i = 0 ; i < n_samples ; i++) {
-	// Derive new position
-	self->rl_pos = self->wl_pos - self->d_samples_l;
-	self->rr_pos = self->wr_pos - self->d_samples_r;
+    for (unsigned int i = 0 ; i < n_samples ; i++) {
+        // Derive new position
+        self->rl_pos = self->wl_pos - self->d_samples_l;
+        self->rr_pos = self->wr_pos - self->d_samples_r;
 
         // Derive the read position and rewind if neccessary
-	if (self->rl_pos < 0)
-           self->rl_pos = self->d_samples_l+1 + self->rl_pos;
+        if (self->rl_pos < 0)
+            self->rl_pos = self->d_samples_l+1 + self->rl_pos;
 
-	if (self->rr_pos < 0)
-           self->rr_pos = self->d_samples_r+1 + self->rr_pos;
+        if (self->rr_pos < 0)
+            self->rr_pos = self->d_samples_r+1 + self->rr_pos;
         
         // Old samples
         float old_s_l = self->buffer_l[self->rl_pos];
         float old_s_r = self->buffer_r[self->rr_pos];
 
-        // Filters
+        // Current samples
         float cur_fs_l = self->input_l[i];
         float cur_fs_r = self->input_r[i];
 
-        // Apply the filter if enabled
+        // Apply the low cut filter if enabled
         if (*self->low_on) {
-            cur_fs_l = bf_lcf(cur_fs_l, *self->low_f, *self->low_q, self->rate,
-                            &self->filter_low_l
+            cur_fs_l = bf_lcf(
+                cur_fs_l, 
+                *self->low_f, 
+                *self->low_q, 
+                self->rate, 
+                &self->filter_low_l
             );
-            cur_fs_r = bf_lcf(cur_fs_r, *self->low_f, *self->low_q, self->rate,
-                            &self->filter_low_r
+            cur_fs_r = bf_lcf(
+                cur_fs_r, 
+                *self->low_f, 
+                *self->low_q, 
+                self->rate, 
+                &self->filter_low_r
             );
         }
  
-        // Apply the filter if enabled
+        // Apply the high cut filter if enabled
         if (*self->high_on) {
-            cur_fs_l = bf_hcf(cur_fs_l, *self->high_f, *self->high_q, self->rate,
-                            &self->filter_high_l
+            cur_fs_l = bf_hcf(
+                cur_fs_l, 
+                *self->high_f, 
+                *self->high_q, 
+                self->rate, 
+                &self->filter_high_l
             );
-            cur_fs_r = bf_hcf(cur_fs_r, *self->high_f, *self->high_q, self->rate,
-                            &self->filter_high_r
+            cur_fs_r = bf_hcf(
+                cur_fs_r, 
+                *self->high_f, 
+                *self->high_q, 
+                self->rate, 
+                &self->filter_high_r
             );
         }
  
@@ -350,9 +411,9 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         // Iterate write position
         self->wl_pos 
-	   = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
+            = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
         self->wr_pos 
-           = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
+            = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
     }
 }
 
@@ -379,6 +440,10 @@ static const void* extension_data(const char* uri) {
     return NULL;
 }
 
+
+/**
+* Descriptor linking our methods.
+*/
 static const LV2_Descriptor descriptor = {
     URI,
     instantiate,
@@ -390,6 +455,10 @@ static const LV2_Descriptor descriptor = {
     extension_data
 };
 
+
+/**
+* Symbol export using the descriptor above
+*/
 LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index) {
     switch (index) {
         case 0:  return &descriptor;
