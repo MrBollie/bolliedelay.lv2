@@ -2,10 +2,15 @@
     <div mod-role="drag-handle" class="mod-drag-handle"></div>
     
     <div class="mod-control-group top">
-       <div class="mod-knob" title="This sets the tempo in BPM. Will be overriden by TAP.">
-          <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="tempo"></div>
-          <span class="mod-knob-title">Tempo</span>
-          <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="tempo"></div>
+       <div class="mod-knob" title="This sets the tempo mode.">
+          <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="tempo_mode"></div>
+          <span class="mod-knob-title">Tempo Mode</span>
+          <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="tempo_mode"></div>
+       </div>
+       <div class="mod-knob" title="This sets the tempo in BPM.">
+          <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="tempo_user"></div>
+          <span class="mod-knob-title">User Tempo</span>
+          <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="tempo_user"></div>
        </div>
        <div class="mod-knob" title="This sets the dry/wet blending.">
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="mix"></div>
@@ -59,6 +64,10 @@
           <div class="mod-knob-image" mod-role="input-control-port" mod-port-symbol="div_r"></div>
           <span class="mod-knob-title">Div. R</span>
           <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="div_r"></div>
+       </div>
+       <div class="mod-knob" title="Current BPM">
+          <div class="mod-knob-value" contenteditable="true" mod-role="input-control-value" mod-port-symbol="tempo_out"></div>
+          <span class="mod-knob-title">Current Tempo</span>
        </div>
     </div>
     

@@ -46,23 +46,26 @@ typedef enum { false, true } bool;
 * Enumeration of LV2 ports
 */
 typedef enum {
-    BDL_TEMPO_BPM   = 0,
-    BDL_TAP         = 1,
-    BDL_MIX         = 2,
-    BDL_DECAY       = 3,
-    BDL_CROSSF      = 4,
-    BDL_LOW_ON      = 5,
-    BDL_LOW_F       = 6,
-    BDL_LOW_Q       = 7,
-    BDL_HIGH_ON      = 8,
-    BDL_HIGH_F      = 9,
-    BDL_HIGH_Q      = 10,
-    BDL_DIV_L       = 11,
-    BDL_DIV_R       = 12,
-    BDL_INPUT_L     = 13,
-    BDL_INPUT_R     = 14,
-    BDL_OUTPUT_L    = 15,
-    BDL_OUTPUT_R    = 16
+    BDL_TEMPO_HOST  = 0,
+    BDL_TEMPO_USER  = 1,
+    BDL_TEMPO_MODE  = 2,
+    BDL_TAP         = 3,
+    BDL_MIX         = 4,
+    BDL_DECAY       = 5,
+    BDL_CROSSF      = 6,
+    BDL_LOW_ON      = 7,
+    BDL_LOW_F       = 8,
+    BDL_LOW_Q       = 9,
+    BDL_HIGH_ON     = 10,
+    BDL_HIGH_F      = 11,
+    BDL_HIGH_Q      = 12,
+    BDL_DIV_L       = 13,
+    BDL_DIV_R       = 14,
+    BDL_INPUT_L     = 15,
+    BDL_INPUT_R     = 16,
+    BDL_OUTPUT_L    = 17,
+    BDL_OUTPUT_R    = 18,
+    BDL_TEMPO_OUT   = 19
 } PortIdx;
 
 
@@ -70,7 +73,10 @@ typedef enum {
 * Struct for THE BollieDelay instance, the host is going to use.
 */
 typedef struct {
-    float* tempo;               ///< Tempo in BPM
+    const float* tempo_host;    ///< Tempo in BPM from host
+    const float* tempo_user;    ///< Tempo in BPM set by user
+    const float* tempo_mode;    ///< Tempo mode 0=host, 1=user
+    float* tempo_out;           ///< For displaying the current tempo on the UI
     const float* tap;           ///< Control port for tapping
     const float* mix;           ///< mix/blend in percentage
     const float* decay;         ///< decay in percentage
@@ -102,7 +108,7 @@ typedef struct {
     int d_samples_r; /**< Storing the max. number of samples for the current 
                             delay time, left */
 
-
+    float tempo_tap;    ///< storing tapped tempo
     float cur_tempo;    ///< state variable for current tempo set by tempo (above)
     float cur_div_l;    ///< state var for current division, left side
     float cur_div_r;    ///< state var for current division, right side
@@ -141,8 +147,14 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
     BollieDelay *self = (BollieDelay*)instance;
 
     switch ((PortIdx)port) {
-        case BDL_TEMPO_BPM:
-            self->tempo = data;
+        case BDL_TEMPO_HOST:
+            self->tempo_host = data;
+            break;
+        case BDL_TEMPO_USER:
+            self->tempo_user = data;
+            break;
+        case BDL_TEMPO_MODE:
+            self->tempo_mode = data;
             break;
         case BDL_TAP:
             self->tap = data;
@@ -192,6 +204,9 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_OUTPUT_R:
             self->output_r = data;
             break;
+        case BDL_TEMPO_OUT:
+            self->tempo_out = data;
+            break;
     }
 }
     
@@ -223,12 +238,13 @@ static void activate(LV2_Handle instance) {
     self->wr_pos = 0;
     self->rl_pos = 0;
     self->rr_pos = 0;
-    self->cur_tempo = 0;
+    self->cur_tempo = 6;
     self->cur_div_l = 0;
     self->cur_div_r = 0;
 
     // Reset tapping
     self->start_tap = 0;
+    self->tempo_tap = 120;
 }
 
 
@@ -264,13 +280,14 @@ static float handle_tap(BollieDelay* self) {
 /**
 * Calculates number of samples used for divided delay times.
 * \param self pointer to current plugin instance.
-* \param div  divider
+* \param tempo Tempo in BPM
+* \param div   Divider
 * \return number of samples needed for the delay buffer
 * \todo divider enum
 */
-static int calc_delay_samples(BollieDelay* self, int div) {
+static int calc_delay_samples(BollieDelay* self, float tempo, int div) {
     // Calculate the samples needed 
-    float d = 60 / *self->tempo * self->rate;
+    float d = 60 / tempo * self->rate;
     switch(div) {
         case 1:
         d = d * 2/3;
@@ -300,22 +317,34 @@ static int calc_delay_samples(BollieDelay* self, int div) {
 static void run(LV2_Handle instance, uint32_t n_samples) {
     BollieDelay* self = (BollieDelay*)instance;
 
+
     // First some TAP handling
     if (*(self->tap) > 0) {
-        long int d = handle_tap(self);
+        float d = handle_tap(self);
         if (d > 0) 
-            *self->tempo = (float)d;
+            self->tempo_tap = (float)d;
+    }
+
+    // Handle tempo mode
+    float tempo = *self->tempo_host; 
+    switch ((int)(*self->tempo_mode)) {
+        case 1:
+            tempo = *self->tempo_user;
+            break;
+        case 2:
+            tempo = self->tempo_tap;
+            break;
     }
 
     // Calculate the number of samples for the currently set delay time, if 
     // parameters change
-    if (*self->tempo != self->cur_tempo ||
+    if (tempo != self->cur_tempo ||
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r
     ) {
-        self->d_samples_l = calc_delay_samples(self, *self->div_l);
-        self->d_samples_r = calc_delay_samples(self, *self->div_r);
-        self->cur_tempo = *self->tempo;
+        self->d_samples_l = calc_delay_samples(self, tempo, *self->div_l);
+        self->d_samples_r = calc_delay_samples(self, tempo, *self->div_r);
+        self->cur_tempo = tempo;
         self->cur_div_l = *self->div_l;
         self->cur_div_r = *self->div_r;
 
@@ -327,6 +356,8 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         if (self->d_samples_r+1 > MAX_TAPE_LEN)
             self->d_samples_r = MAX_TAPE_LEN-1;
+
+        *self->tempo_out = tempo;
     }
 
     // Loop over the block of audio we got
