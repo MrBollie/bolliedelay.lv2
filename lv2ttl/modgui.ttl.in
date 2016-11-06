@@ -6,6 +6,7 @@
         modgui:resourcesDirectory <modgui> ;
         modgui:iconTemplate <modgui/bolliedelay.html> ;
         modgui:stylesheet <modgui/bolliedelay.css> ;
+        modgui:javascript <modgui/bolliedelay.js> ;
         modgui:screenshot <modgui/screenshot-bollie-delay.png> ;
         modgui:thumbnail <modgui/thumbnail-bollie-delay.png> ;
         modgui:brand "Bollie" ;
