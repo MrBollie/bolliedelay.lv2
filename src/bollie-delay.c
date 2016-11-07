@@ -70,6 +70,22 @@ typedef enum {
 
 
 /**
+* Enumeration of current fade mode
+*/
+typedef enum { NONE, IN, OUT } FadeMode;
+
+
+/**
+* Fade state
+*/
+typedef struct {
+    FadeMode mode;
+    unsigned int length;
+    unsigned int pos;
+} Fade;
+
+
+/**
 * Struct for THE BollieDelay instance, the host is going to use.
 */
 typedef struct {
@@ -105,9 +121,12 @@ typedef struct {
 
     int d_samples_l; /**< Storing the max. number of samples for the current 
                             delay time, left */
+    int d_samples_l_new;
     int d_samples_r; /**< Storing the max. number of samples for the current 
                             delay time, left */
+    int d_samples_r_new;
 
+    Fade fade;     ///< storing the desired fade mode, if needed
     float tempo_tap;    ///< storing tapped tempo
     float cur_tempo;    ///< state variable for current tempo set by tempo (above)
     float cur_div_l;    ///< state var for current division, left side
@@ -118,6 +137,63 @@ typedef struct {
     int rr_pos;         ///< current read position, right side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
 } BollieDelay;
+
+/**
+* Returns the current fade_coeff.
+* \param self Current plugin instance
+* \return fade coeff
+*/
+static float fade_coeff(BollieDelay* self) {
+    Fade* f = &self->fade;
+    if (f->mode == IN) {
+        if (f->pos < f->length) {
+            return f->pos++ * (1/f->length);
+        }
+    }
+    else if (f->mode == OUT) {
+        if (f->pos > 0) {
+            return --f->pos * (1/f->length);
+        }
+    }
+    return 1;
+}
+
+
+/**
+* Initiates a fade
+* \param self Current plugin instance
+* \param mode IN, OUT, NONE
+*/
+static void do_fade(BollieDelay* self, FadeMode mode) {
+    self->fade.mode = mode;
+    self->fade.length = ceil(self->rate / 50);
+    if (mode == OUT) {
+        self->fade.pos = self->fade.length;
+    }
+    else {
+        self->fade.pos = 0;
+    }
+}
+
+/**
+* Returns the fade mode
+* \param self Current plugin instance
+* \return mode of type FadeMode
+*/
+static FadeMode get_fade_mode(BollieDelay* self) {
+    return self->fade.mode;
+}
+
+/**
+* Checks if a fade is in progress.
+* \param self Current plugin instance
+* \return true if a fade is in progress.
+*/
+static bool is_fading(BollieDelay* self) {
+    Fade* f = &self->fade;
+    return ((f->mode == IN && f->pos < f->length) ||
+        (f->mode == OUT && f->pos > 0));
+}
 
 
 /**
@@ -132,6 +208,11 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
 
     // Memorize sample rate for calculation
     self->rate = rate;
+
+    // Fade in set for first delay
+    self->fade.length = ceil(rate / 50);
+    self->fade.pos = 0;
+    self->fade.mode = IN;
 
     return (LV2_Handle)self;
 }
@@ -336,28 +417,40 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             break;
     }
 
-    // Calculate the number of samples for the currently set delay time, if 
-    // parameters change
-    if (tempo != self->cur_tempo ||
+    // If tempo related params change, memorize the new tempo and do a fade
+    // out first, before setting the new delay time.
+    if ((tempo != self->cur_tempo ||
         *self->div_l != self->cur_div_l ||
-        *self->div_r != self->cur_div_r
+        *self->div_r != self->cur_div_r)
     ) {
-        self->d_samples_l = calc_delay_samples(self, tempo, *self->div_l);
-        self->d_samples_r = calc_delay_samples(self, tempo, *self->div_r);
-        self->cur_tempo = tempo;
-        self->cur_div_l = *self->div_l;
-        self->cur_div_r = *self->div_r;
+        // if we're not yet in fade out mode, set it
+        if (get_fade_mode(self) != OUT) {
+             // memorize new tempo
+             self->d_samples_l_new = calc_delay_samples(self, tempo, *self->div_l);
+             self->d_samples_r_new = calc_delay_samples(self, tempo, *self->div_r);
+             do_fade(self, OUT);
+        }
+        else if (!is_fading(self)) {
+            // Fade out seems to be done, now set the new values
+            self->cur_tempo = tempo;
+            self->cur_div_l = *self->div_l;
+            self->cur_div_r = *self->div_r;
+            self->d_samples_l = self->d_samples_l_new;
+            self->d_samples_r = self->d_samples_r_new;
 
-        /* The buffer always needs to be one sample bigger than the delay time.
-        In order to not exceed MAX_TAPE_LEN, cut the number of samples, if 
-        needed */
-        if (self->d_samples_l+1 > MAX_TAPE_LEN)
-            self->d_samples_l = MAX_TAPE_LEN-1;
+            /* The buffer always needs to be one sample bigger than the delay time.
+            In order to not exceed MAX_TAPE_LEN, cut the number of samples, if 
+            needed */
+            if (self->d_samples_l+1 > MAX_TAPE_LEN)
+                self->d_samples_l = MAX_TAPE_LEN-1;
 
-        if (self->d_samples_r+1 > MAX_TAPE_LEN)
-            self->d_samples_r = MAX_TAPE_LEN-1;
+            if (self->d_samples_r+1 > MAX_TAPE_LEN)
+                self->d_samples_r = MAX_TAPE_LEN-1;
 
-        *self->tempo_out = tempo;
+            *self->tempo_out = tempo;
+            // Do the fade in
+            do_fade(self, IN);
+        }
     }
 
     // Loop over the block of audio we got
@@ -372,10 +465,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         if (self->rr_pos < 0)
             self->rr_pos = self->d_samples_r+1 + self->rr_pos;
+
+        float fc = fade_coeff(self);
         
         // Old samples
-        float old_s_l = self->buffer_l[self->rl_pos];
-        float old_s_r = self->buffer_r[self->rr_pos];
+        float old_s_l = self->buffer_l[self->rl_pos] * fc;
+        float old_s_r = self->buffer_r[self->rr_pos] * fc;
 
         // Current samples
         float cur_fs_l = self->input_l[i];
@@ -433,12 +528,14 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         // Now copy samples from read pos of the buffer to the output buffer
         
         // Left channel
-        self->output_l[i] = self->buffer_l[self->rl_pos] * *(self->mix) / 100 
-            + self->input_l[i] * (100 - *self->mix) / 100;
+        self->output_l[i] = 
+            fc * (self->buffer_l[self->rl_pos] * *(self->mix) / 100)
+            + (self->input_l[i] * (100 - *self->mix) / 100);
 
         // Same for right channel
-        self->output_r[i] = self->buffer_r[self->rr_pos] * *(self->mix) / 100 
-            + self->input_r[i] * (100 - *self->mix) / 100;
+        self->output_r[i] = 
+            fc * (self->buffer_r[self->rr_pos] * *(self->mix) / 100)
+            + (self->input_r[i] * (100 - *self->mix) / 100);
 
         // Iterate write position
         self->wl_pos 
