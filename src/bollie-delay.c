@@ -65,7 +65,8 @@ typedef enum {
     BDL_INPUT_R     = 16,
     BDL_OUTPUT_L    = 17,
     BDL_OUTPUT_R    = 18,
-    BDL_TEMPO_OUT   = 19
+    BDL_TEMPO_OUT   = 19,
+    BDL_FADE_OUT    = 20
 } PortIdx;
 
 
@@ -80,8 +81,8 @@ typedef enum { NONE, IN, OUT } FadeMode;
 */
 typedef struct {
     FadeMode mode;
-    unsigned int length;
-    unsigned int pos;
+    int length;
+    int pos;
 } Fade;
 
 
@@ -136,6 +137,9 @@ typedef struct {
     int rl_pos;         ///< current read position, left side
     int rr_pos;         ///< current read position, right side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
+
+
+    float* fade_out;
 } BollieDelay;
 
 /**
@@ -147,12 +151,15 @@ static float fade_coeff(BollieDelay* self) {
     Fade* f = &self->fade;
     if (f->mode == IN) {
         if (f->pos < f->length) {
-            return f->pos++ * (1/f->length);
+            return f->pos++ * (1/(float)f->length);
         }
     }
     else if (f->mode == OUT) {
         if (f->pos > 0) {
-            return --f->pos * (1/f->length);
+            return --f->pos * (1/(float)f->length);
+        }
+        else {
+            return 0;
         }
     }
     return 1;
@@ -166,13 +173,7 @@ static float fade_coeff(BollieDelay* self) {
 */
 static void do_fade(BollieDelay* self, FadeMode mode) {
     self->fade.mode = mode;
-    self->fade.length = ceil(self->rate / 50);
-    if (mode == OUT) {
-        self->fade.pos = self->fade.length;
-    }
-    else {
-        self->fade.pos = 0;
-    }
+    self->fade.length = ceil(self->rate / 10);
 }
 
 /**
@@ -191,8 +192,8 @@ static FadeMode get_fade_mode(BollieDelay* self) {
 */
 static bool is_fading(BollieDelay* self) {
     Fade* f = &self->fade;
-    return ((f->mode == IN && f->pos < f->length) ||
-        (f->mode == OUT && f->pos > 0));
+    return (f->mode == IN && f->pos < f->length) ||
+        (f->mode == OUT && f->pos > 0);
 }
 
 
@@ -212,7 +213,7 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
     // Fade in set for first delay
     self->fade.length = ceil(rate / 50);
     self->fade.pos = 0;
-    self->fade.mode = IN;
+    self->fade.mode = NONE;
 
     return (LV2_Handle)self;
 }
@@ -287,6 +288,9 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
             break;
         case BDL_TEMPO_OUT:
             self->tempo_out = data;
+            break;
+        case BDL_FADE_OUT:
+            self->fade_out = data;
             break;
     }
 }
@@ -467,6 +471,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             self->rr_pos = self->d_samples_r+1 + self->rr_pos;
 
         float fc = fade_coeff(self);
+        *self->fade_out = fc * 100;
         
         // Old samples
         float old_s_l = self->buffer_l[self->rl_pos] * fc;
