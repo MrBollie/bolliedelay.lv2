@@ -62,3 +62,8 @@ install: build
 	cp -rv $(BUILDDIR)/modgui/* $(DESTDIR)$(PREFIX)/lib/lv2/bolliedelay.lv2/modgui/
 
 # --------------------------------------------------------------
+uninstall:
+	echo "Uninstall"
+	rm -fr $(DESTDIR)$(PREFIX)/lib/lv2/bolliedelay.lv2
+	
+# --------------------------------------------------------------
