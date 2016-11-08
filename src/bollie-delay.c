@@ -69,18 +69,20 @@ typedef enum {
     BDL_FADE_OUT    = 20
 } PortIdx;
 
-
-/**
-* Enumeration of current fade mode
-*/
-typedef enum { NONE, IN, OUT } FadeMode;
+typedef enum {
+    FADE_IN,
+    FADE_IN_DONE,
+    FADE_OUT,
+    FADE_OUT_DONE,
+    FILL_BUF,
+    CYCLE
+} BollieState;
 
 
 /**
 * Fade state
 */
 typedef struct {
-    FadeMode mode;
     int length;
     int pos;
 } Fade;
@@ -110,10 +112,13 @@ typedef struct {
     const float* input_r;       ///< input1, right side
     float* output_l;            ///< output1, left side
     float* output_r;            ///< output2, right side
+
     double rate;                ///< Current sample rate
 
     float buffer_l[MAX_TAPE_LEN];   ///< delay buffer left
+    int buf_fill_l;                 ///< current fill level
     float buffer_r[MAX_TAPE_LEN];   ///< delay buffer right
+    int buf_fill_r;                 ///< current fill level
 
     BollieFilter filter_low_l;      ///< LCF left
     BollieFilter filter_low_r;      ///< LCF right
@@ -122,12 +127,10 @@ typedef struct {
 
     int d_samples_l; /**< Storing the max. number of samples for the current 
                             delay time, left */
-    int d_samples_l_new;
     int d_samples_r; /**< Storing the max. number of samples for the current 
                             delay time, left */
-    int d_samples_r_new;
 
-    Fade fade;     ///< storing the desired fade mode, if needed
+    Fade fade;          ///< Fade state
     float tempo_tap;    ///< storing tapped tempo
     float cur_tempo;    ///< state variable for current tempo set by tempo (above)
     float cur_div_l;    ///< state var for current division, left side
@@ -138,8 +141,9 @@ typedef struct {
     int rr_pos;         ///< current read position, right side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
 
+    BollieState state; ///< Overall state
 
-    float* fade_out;
+    float* fade_out;    ///< control port to debug fades
 } BollieDelay;
 
 /**
@@ -149,51 +153,23 @@ typedef struct {
 */
 static float fade_coeff(BollieDelay* self) {
     Fade* f = &self->fade;
-    if (f->mode == IN) {
+    if (self->state == FADE_IN) {
         if (f->pos < f->length) {
             return f->pos++ * (1/(float)f->length);
         }
+        else {
+            self->state = CYCLE;
+        }
     }
-    else if (f->mode == OUT) {
+    else if (self->state == FADE_OUT) {
         if (f->pos > 0) {
             return --f->pos * (1/(float)f->length);
         }
         else {
-            return 0;
+            self->state = FADE_OUT_DONE;
         }
     }
-    return 1;
-}
-
-
-/**
-* Initiates a fade
-* \param self Current plugin instance
-* \param mode IN, OUT, NONE
-*/
-static void do_fade(BollieDelay* self, FadeMode mode) {
-    self->fade.mode = mode;
-    self->fade.length = ceil(self->rate / 10);
-}
-
-/**
-* Returns the fade mode
-* \param self Current plugin instance
-* \return mode of type FadeMode
-*/
-static FadeMode get_fade_mode(BollieDelay* self) {
-    return self->fade.mode;
-}
-
-/**
-* Checks if a fade is in progress.
-* \param self Current plugin instance
-* \return true if a fade is in progress.
-*/
-static bool is_fading(BollieDelay* self) {
-    Fade* f = &self->fade;
-    return (f->mode == IN && f->pos < f->length) ||
-        (f->mode == OUT && f->pos > 0);
+    return self->state == CYCLE ? 1 : 0;
 }
 
 
@@ -212,8 +188,8 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
 
     // Fade in set for first delay
     self->fade.length = ceil(rate / 50);
+    //self->fade.length = ceil(rate *4);
     self->fade.pos = 0;
-    self->fade.mode = NONE;
 
     return (LV2_Handle)self;
 }
@@ -307,6 +283,10 @@ static void activate(LV2_Handle instance) {
         self->buffer_l[i] = 0;
         self->buffer_r[i] = 0;
     }
+    self->state = FILL_BUF;
+
+    self->buf_fill_r = 0;
+    self->buf_fill_l = 0;
 
     // Initialize number of samples needed
     self->d_samples_l = 0;
@@ -323,7 +303,7 @@ static void activate(LV2_Handle instance) {
     self->wr_pos = 0;
     self->rl_pos = 0;
     self->rr_pos = 0;
-    self->cur_tempo = 6;
+    self->cur_tempo = 0;
     self->cur_div_l = 0;
     self->cur_div_r = 0;
 
@@ -427,55 +407,65 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r)
     ) {
-        // if we're not yet in fade out mode, set it
-        if (get_fade_mode(self) != OUT) {
-             // memorize new tempo
-             self->d_samples_l_new = calc_delay_samples(self, tempo, *self->div_l);
-             self->d_samples_r_new = calc_delay_samples(self, tempo, *self->div_r);
-             do_fade(self, OUT);
-        }
-        else if (!is_fading(self)) {
+        if (self->state == FADE_OUT_DONE) {
             // Fade out seems to be done, now set the new values
             self->cur_tempo = tempo;
             self->cur_div_l = *self->div_l;
             self->cur_div_r = *self->div_r;
-            self->d_samples_l = self->d_samples_l_new;
-            self->d_samples_r = self->d_samples_r_new;
+            self->d_samples_l = 
+                calc_delay_samples(self, tempo, *self->div_l);
+            self->d_samples_r =
+                calc_delay_samples(self, tempo, *self->div_r);
 
-            /* The buffer always needs to be one sample bigger than the delay time.
-            In order to not exceed MAX_TAPE_LEN, cut the number of samples, if 
-            needed */
+            /* The buffer always needs to be one sample bigger than the delay 
+            time.  In order to not exceed MAX_TAPE_LEN, cut the number of 
+            samples, if needed */
             if (self->d_samples_l+1 > MAX_TAPE_LEN)
                 self->d_samples_l = MAX_TAPE_LEN-1;
 
             if (self->d_samples_r+1 > MAX_TAPE_LEN)
                 self->d_samples_r = MAX_TAPE_LEN-1;
 
+            // Reset positions
+            self->rl_pos = 0;
+            self->rr_pos = 0;
+            self->wl_pos = self->d_samples_l;
+            self->wr_pos = self->d_samples_r;
+            self->buf_fill_l = 0;
+            self->buf_fill_r = 0;
+
             *self->tempo_out = tempo;
-            // Do the fade in
-            do_fade(self, IN);
+            // Ready to fill buffer
+            self->state = FILL_BUF;
+        }
+        else if (self->state != FADE_OUT) {
+             self->state = FADE_OUT;
         }
     }
 
     // Loop over the block of audio we got
     for (unsigned int i = 0 ; i < n_samples ; i++) {
-        // Derive new position
-        self->rl_pos = self->wl_pos - self->d_samples_l;
-        self->rr_pos = self->wr_pos - self->d_samples_r;
 
-        // Derive the read position and rewind if neccessary
-        if (self->rl_pos < 0)
-            self->rl_pos = self->d_samples_l+1 + self->rl_pos;
-
-        if (self->rr_pos < 0)
-            self->rr_pos = self->d_samples_r+1 + self->rr_pos;
-
+        // Calculates the fade coeff
         float fc = fade_coeff(self);
         *self->fade_out = fc * 100;
-        
+
         // Old samples
-        float old_s_l = self->buffer_l[self->rl_pos] * fc;
-        float old_s_r = self->buffer_r[self->rr_pos] * fc;
+        float old_s_l = 0;
+        float old_s_r = 0;
+
+        if (self->state == CYCLE) {
+            old_s_r = self->buffer_r[self->rr_pos] * fc;
+            old_s_l = self->buffer_l[self->rl_pos] * fc;
+        }
+        else if(self->state == FILL_BUF) {
+            // If the buffer is filled, initiate a fade in
+            if (self->buf_fill_r == self->d_samples_r &&
+                self->buf_fill_l == self->d_samples_l
+            ) {
+                self->state = FADE_IN;
+            }
+        }
 
         // Current samples
         float cur_fs_l = self->input_l[i];
@@ -509,9 +499,9 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
                 &self->filter_high_l
             );
             cur_fs_r = bf_hcf(
-                cur_fs_r, 
-                *self->high_f, 
-                *self->high_q, 
+                cur_fs_r,
+                *self->high_f,
+                *self->high_q,
                 self->rate, 
                 &self->filter_high_r
             );
@@ -530,8 +520,10 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             + old_s_l * *self->crossf / 100
             + old_s_r * *self->decay / 100;
 
+        if (self->buf_fill_r < self->d_samples_r)
+            self->buf_fill_r++;
+
         // Now copy samples from read pos of the buffer to the output buffer
-        
         // Left channel
         self->output_l[i] = 
             fc * (self->buffer_l[self->rl_pos] * *(self->mix) / 100)
@@ -547,6 +539,20 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
         self->wr_pos 
             = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
+
+        // Iterate reade positions
+        self->rl_pos 
+            = (self->rl_pos+1 >= self->d_samples_l+1 ? 0 : self->rl_pos+1);
+        self->rr_pos 
+            = (self->rr_pos+1 >= self->d_samples_r+1 ? 0 : self->rr_pos+1);
+
+        // count up
+        if (self->buf_fill_l < self->d_samples_l)
+            self->buf_fill_l++;
+
+        if (self->buf_fill_r < self->d_samples_r)
+            self->buf_fill_r++;
+
     }
 }
 
