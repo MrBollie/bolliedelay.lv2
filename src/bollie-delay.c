@@ -454,17 +454,19 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         float old_s_l = 0;
         float old_s_r = 0;
 
-        if (self->state == CYCLE) {
-            old_s_r = self->buffer_r[self->rr_pos] * fc;
-            old_s_l = self->buffer_l[self->rl_pos] * fc;
-        }
-        else if(self->state == FILL_BUF) {
+        if(self->state == FILL_BUF) {
             // If the buffer is filled, initiate a fade in
             if (self->buf_fill_r == self->d_samples_r &&
                 self->buf_fill_l == self->d_samples_l
             ) {
                 self->state = FADE_IN;
             }
+        }
+        else {
+            // Old samples will only be retrieved from the buffer
+            // if the buffer is filled.
+            old_s_r = self->buffer_r[self->rr_pos] * fc;
+            old_s_l = self->buffer_l[self->rl_pos] * fc;
         }
 
         // Current samples
@@ -508,6 +510,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         }
  
 
+        // Feedback and Crossfeed
         // Left Channel
         self->buffer_l[self->wl_pos] = 
             cur_fs_l                            // current filtered sample
@@ -520,18 +523,17 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             + old_s_l * *self->crossf / 100
             + old_s_r * *self->decay / 100;
 
-        if (self->buf_fill_r < self->d_samples_r)
-            self->buf_fill_r++;
-
         // Now copy samples from read pos of the buffer to the output buffer
         // Left channel
         self->output_l[i] = 
-            fc * (self->buffer_l[self->rl_pos] * *(self->mix) / 100)
+            fc * (old_s_l * *(self->mix) / 100)
+            //fc * (self->buffer_l[self->rl_pos] * *(self->mix) / 100)
             + (self->input_l[i] * (100 - *self->mix) / 100);
 
         // Same for right channel
         self->output_r[i] = 
-            fc * (self->buffer_r[self->rr_pos] * *(self->mix) / 100)
+            fc * (old_s_l * *(self->mix) / 100)
+            //fc * (self->buffer_r[self->rr_pos] * *(self->mix) / 100)
             + (self->input_r[i] * (100 - *self->mix) / 100);
 
         // Iterate write position
