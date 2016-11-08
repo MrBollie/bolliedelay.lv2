@@ -13,7 +13,8 @@
     height:312px;
     position:absolute;
     width:623px;
-    padding: 10px;
+    padding: 10px 10px 10px 7px;
+    text-align: center;
 }
 
 /* = Labels
@@ -34,6 +35,25 @@
     font-size:80px;
     color: #898989;
     line-height:1;
+}
+
+.bolliedelay .bollie-label {
+    text-transform:uppercase;
+    font-size:11px;
+    font-weight:bold;
+    color: #efefef;
+    display: block;
+    position: absolute;
+}
+
+.bolliedelay .bollie-label.bypass {
+    bottom: 10px;
+    left: 145px;
+}
+
+.bolliedelay .bollie-label.tap {
+    bottom: 10px;
+    right: 40px;
 }
 
 /* = LIGHT ON/OFF
@@ -119,20 +139,7 @@
     border-color: #888888;
     width: auto;
     display:inline-block;
-    padding: 3px;
-}
-.bolliedelay .bollie-group.bottom {
-    margin: 0px;
-    position:absolute;
-    bottom: 0px;
-    right: 10px;
-    width: 300px;
-    text-align:center;
-    z-index:30;
-    border-width: 0px;
-}
-.bolliedelay .top {
-    margin-top:20px !important;
+    padding: 2px;
 }
 
 .bolliedelay .bollie-group .mod-knob > span.mod-knob-title {
@@ -240,10 +247,3 @@
     cursor:pointer;
 }
 
-/* = COLORS
-================================================ */
-.bolliedelay h1,
-.bolliedelay .mod-enumerated,
-.bolliedelay h1 {
-    border-color:black;
-}
