@@ -401,17 +401,20 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             break;
     }
 
-    // If tempo related params change, memorize the new tempo and do a fade
-    // out first, before setting the new delay time.
+    // Tempo changes always initiate a fade out.
     if ((tempo != self->cur_tempo ||
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r)
     ) {
+        // If the fade out is done, resize buffer and get everything set for 
+        // filling the buffers.
         if (self->state == FADE_OUT_DONE) {
-            // Fade out seems to be done, now set the new values
+            // Memorize the user's current settings.
             self->cur_tempo = tempo;
             self->cur_div_l = *self->div_l;
             self->cur_div_r = *self->div_r;
+
+            // Calculate the samples needed for the currently set delay time
             self->d_samples_l = 
                 calc_delay_samples(self, tempo, *self->div_l);
             self->d_samples_r =
@@ -426,7 +429,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             if (self->d_samples_r+1 > MAX_TAPE_LEN)
                 self->d_samples_r = MAX_TAPE_LEN-1;
 
-            // Reset positions
+            // Reset positions and pretend the buffer to be empty
             self->rl_pos = 0;
             self->rr_pos = 0;
             self->wl_pos = self->d_samples_l;
@@ -434,11 +437,15 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             self->buf_fill_l = 0;
             self->buf_fill_r = 0;
 
+            // Send current tempo to control port
             *self->tempo_out = tempo;
+
             // Ready to fill buffer
             self->state = FILL_BUF;
         }
         else if (self->state != FADE_OUT) {
+             // If we reach this, tempo has been changed, but no fade out
+             // has been done yet.
              self->state = FADE_OUT;
         }
     }
@@ -446,14 +453,18 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     // Loop over the block of audio we got
     for (unsigned int i = 0 ; i < n_samples ; i++) {
 
-        // Calculates the fade coeff
-        float fc = fade_coeff(self);
+        // Calculates the fade coeff. This also increases
+        // the internal fade position.
+        float fc = fade_coeff(self);o
+
+        // Show current fade state on control port
         *self->fade_out = fc * 100;
 
-        // Old samples
+        // Previous samples
         float old_s_l = 0;
         float old_s_r = 0;
 
+        // Buffer is to be filled?
         if(self->state == FILL_BUF) {
             // If the buffer is filled, initiate a fade in
             if (self->buf_fill_r == self->d_samples_r &&
@@ -523,37 +534,35 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             + old_s_l * *self->crossf / 100
             + old_s_r * *self->decay / 100;
 
-        // Now copy samples from read pos of the buffer to the output buffer
-        // Left channel
-        self->output_l[i] = 
-            fc * (old_s_l * *(self->mix) / 100)
-            //fc * (self->buffer_l[self->rl_pos] * *(self->mix) / 100)
-            + (self->input_l[i] * (100 - *self->mix) / 100);
-
-        // Same for right channel
-        self->output_r[i] = 
-            fc * (old_s_l * *(self->mix) / 100)
-            //fc * (self->buffer_r[self->rr_pos] * *(self->mix) / 100)
-            + (self->input_r[i] * (100 - *self->mix) / 100);
-
-        // Iterate write position
-        self->wl_pos 
-            = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
-        self->wr_pos 
-            = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
-
-        // Iterate reade positions
-        self->rl_pos 
-            = (self->rl_pos+1 >= self->d_samples_l+1 ? 0 : self->rl_pos+1);
-        self->rr_pos 
-            = (self->rr_pos+1 >= self->d_samples_r+1 ? 0 : self->rr_pos+1);
-
-        // count up
+        // Increase buf fill count
         if (self->buf_fill_l < self->d_samples_l)
             self->buf_fill_l++;
 
         if (self->buf_fill_r < self->d_samples_r)
             self->buf_fill_r++;
+
+        // Now copy samples from read pos of the buffer to the output buffer
+        // Left channel
+        self->output_l[i] = 
+            fc * (old_s_l * *(self->mix) / 100)
+            + (self->input_l[i] * (100 - *self->mix) / 100);
+
+        // Same for right channel
+        self->output_r[i] = 
+            fc * (old_s_l * *(self->mix) / 100)
+            + (self->input_r[i] * (100 - *self->mix) / 100);
+
+        // Iterate write position, reset to 0 if required
+        self->wl_pos 
+            = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
+        self->wr_pos 
+            = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
+
+        // Iterate reade positions, reset to 0 if required.
+        self->rl_pos 
+            = (self->rl_pos+1 >= self->d_samples_l+1 ? 0 : self->rl_pos+1);
+        self->rr_pos 
+            = (self->rr_pos+1 >= self->d_samples_r+1 ? 0 : self->rr_pos+1);
 
     }
 }
