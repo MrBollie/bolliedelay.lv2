@@ -22,8 +22,8 @@
 .bolliedelay .bollie-plugin-name {
     overflow:hidden;
     position:absolute;
-    right:25px;
-    bottom: 90px;
+    left:260px;
+    bottom: 0px;
     text-align:center;
     text-transform:uppercase;
 }
@@ -58,8 +58,10 @@
     cursor:pointer;
     height:66px;
     width: 66px;
-    margin: 4px 75px 0 auto;
-    display: inline-block;
+    margin: 4px auto 0 auto;
+    position: absolute;
+    left: 180px;
+    bottom: 12px;
 }
 
 .bolliedelay .mod-footswitch.on {
@@ -78,7 +80,9 @@
     height: 66px;
     width: 66px;
     margin: 4px auto 0 auto;
-    display: inline-block;
+    position: absolute;
+    bottom: 12px;
+    right: 50px;
 }
 
 .bolliedelay .mod-pushbutton.on {
@@ -112,16 +116,17 @@
     z-index:30;
     border-style: solid;
     border-width: 1px;
-    border-color: #aaaaaa;
+    border-color: #888888;
     width: auto;
     display:inline-block;
     padding: 3px;
 }
 .bolliedelay .bollie-group.bottom {
-    margin:0px 20px 0px 20px !important;
+    margin: 0px;
     position:absolute;
     bottom: 0px;
     right: 10px;
+    width: 300px;
     text-align:center;
     z-index:30;
     border-width: 0px;
@@ -131,7 +136,7 @@
 }
 
 .bolliedelay .bollie-group .mod-knob > span.mod-knob-title {
-    bottom:12px;
+    bottom:13px;
     cursor:default;
     display:block;
     font-size:11px;
@@ -145,6 +150,7 @@
     position:absolute;
     right:0;
     text-transform:uppercase;
+    text-align: center;
     color: #efefef;
 }
 
@@ -156,23 +162,25 @@
     position:absolute;
     right:0;
     z-index:60;
-    color: #000000;
-    background-color: #aaaaaa;
-    padding: 1px;
+    color: #32af3e;
+    background-color: #111111;
+    padding: 2px;
+    text-align: right;
 }
 
-.bolliedelay .bollie-group .mod-knob .mod-knob-value .bollie-value{
-    top: 30px;
+.bolliedelay .bollie-group .mod-knob .bollie-value{
     font-size:11px;
     left:0;
     line-height:1;
-    position:absolute;
     width: 70px;
     right:0;
     z-index:60;
-    color: #ff0000;
-    background-color: #000000;
-    padding: 3px;
+    padding: 5px;
+    top: 30px;
+    color: #32af3e;
+    position:absolute;
+    background-color: #111111;
+    text-align: right;
 }
 
 .bolliedelay .bollie-group .mod-knob .mod-knob-image {
