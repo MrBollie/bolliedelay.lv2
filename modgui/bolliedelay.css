@@ -139,7 +139,7 @@
     border-color: #888888;
     width: auto;
     display:inline-block;
-    padding: 2px;
+    padding: 2px 2px 0px 2px;
 }
 
 .bolliedelay .bollie-group .mod-knob > span.mod-knob-title {
