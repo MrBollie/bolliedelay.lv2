@@ -455,7 +455,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         // Calculates the fade coeff. This also increases
         // the internal fade position.
-        float fc = fade_coeff(self);o
+        float fc = fade_coeff(self);
 
         // Show current fade state on control port
         *self->fade_out = fc * 100;

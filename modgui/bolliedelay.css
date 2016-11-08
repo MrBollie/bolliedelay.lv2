@@ -13,6 +13,7 @@
     height:312px;
     position:absolute;
     width:623px;
+    padding: 10px;
 }
 
 /* = Labels
@@ -104,32 +105,32 @@
 
 /* = KNOBS
 ================================================ */
-.bolliedelay .mod-control-group {
-    margin:20px 20px 5px 20px !important;
+.bolliedelay .bollie-group {
+    margin:5px 0px 0px 5px !important;
     position:relative;
     text-align:left;
     z-index:30;
+    border-style: solid;
+    border-width: 1px;
+    border-color: #aaaaaa;
+    width: auto;
+    display:inline-block;
+    padding: 3px;
 }
-.bolliedelay .mod-control-group.bottom {
+.bolliedelay .bollie-group.bottom {
     margin:0px 20px 0px 20px !important;
     position:absolute;
-    bottom: 5px;
-    right: 150px;
+    bottom: 0px;
+    right: 10px;
     text-align:center;
     z-index:30;
+    border-width: 0px;
 }
 .bolliedelay .top {
     margin-top:20px !important;
 }
 
-.bolliedelay .bolliegroup {
-    border-style: solid;
-    border-width: 1px;
-    border-color: #efefef;
-    display:inline-block;
-}
-
-.bolliedelay .mod-control-group .mod-knob > span.mod-knob-title {
+.bolliedelay .bollie-group .mod-knob > span.mod-knob-title {
     bottom:12px;
     cursor:default;
     display:block;
@@ -147,7 +148,7 @@
     color: #efefef;
 }
 
-.bolliedelay .mod-control-group .mod-knob .mod-knob-value {
+.bolliedelay .bollie-group .mod-knob .mod-knob-value {
     bottom:0px;
     font-size:11px;
     left:0;
@@ -160,7 +161,7 @@
     padding: 1px;
 }
 
-.bolliedelay .mod-control-group .mod-knob .mod-knob-value .bollie-value{
+.bolliedelay .bollie-group .mod-knob .mod-knob-value .bollie-value{
     top: 30px;
     font-size:11px;
     left:0;
@@ -174,7 +175,7 @@
     padding: 3px;
 }
 
-.bolliedelay .mod-control-group .mod-knob .mod-knob-image {
+.bolliedelay .bollie-group .mod-knob .mod-knob-image {
     background-image:url(/resources/aluminium.png{{{ns}}});
     background-repeat:no-repeat;
     background-size:auto 60px;
@@ -183,11 +184,11 @@
     margin:0 auto;
 }
 
-.bolliedelay .mod-control-group .mod-knob {
+.bolliedelay .bollie-group .mod-knob {
     display:inline-block;
     height:88px;
     width:70px;
-    margin:1px 5px;
+    margin:1px 1px;
     overflow:hidden;
     position:relative;
 }
