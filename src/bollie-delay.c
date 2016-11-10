@@ -549,7 +549,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         // Same for right channel
         self->output_r[i] = 
-            fc * (old_s_l * *(self->mix) / 100)
+            fc * (old_s_r * *(self->mix) / 100)
             + (self->input_r[i] * (100 - *self->mix) / 100);
 
         // Iterate write position, reset to 0 if required
