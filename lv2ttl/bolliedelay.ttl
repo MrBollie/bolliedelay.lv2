@@ -278,5 +278,5 @@
         lv2:minimum 0.0000 ;
         lv2:maximum 100.0000 ;
     ] ;
-    rdfs:comment "My first try to create a delay. It includes tap tempo, Low/Hi-Cut and various tap dividers."
-.
+    rdfs:comment '''This stereo tempo delay features high pass and low pass filters as well as host tempo. When using it with the MOD Duo on software version >1.2.0, then please assign a footswitch to Host/MOD-Tempo. Otherwise you can assign the tap button to a foot switch. Always make sure to set the correct tempo mode. 
+    Enjoy! :-) And feedback is always welcome.''' .
