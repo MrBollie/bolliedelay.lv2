@@ -141,7 +141,7 @@ typedef struct {
     int rr_pos;         ///< current read position, right side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
 
-    BollieState state; ///< Overall state
+    BollieState state;  ///< Overall state
 
     float* fade_out;    ///< control port to debug fades
 } BollieDelay;
@@ -310,6 +310,28 @@ static void activate(LV2_Handle instance) {
     // Reset tapping
     self->start_tap = 0;
     self->tempo_tap = 120;
+}
+
+
+/**
+* This does the blend calculations for dry/wet proportions. 
+* if cp_blend is below or equal to 50, dry will be passed
+* through and wet added accordingly to the cp_blend value.
+* If greater than 50, wet will be passed through and dry
+* added. 
+* \param dry dry sample
+* \param wet wet sample
+* \param cp_blend float value from the control port
+* \return mixed sample or 0 if cp_blend is invalid.
+* \todo check if dry is correctly computed.
+*/
+static float blend(float dry, float wet, float cp_blend) {
+    float out = 0;
+    if (cp_blend >= 0 && cp_blend <= 100) {
+        out = cp_blend <= 50 ? dry + wet * (cp_blend * 0.02) : 
+            wet + dry * ((cp_blend - 50) * -0.02);
+    }
+    return out;
 }
 
 
@@ -521,7 +543,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         }
  
 
-        // Feedback and Crossfeed
+        /* Feedback and Crossfeed filling the buffer */
         // Left Channel
         self->buffer_l[self->wl_pos] = 
             cur_fs_l                            // current filtered sample
@@ -541,16 +563,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         if (self->buf_fill_r < self->d_samples_r)
             self->buf_fill_r++;
 
-        // Now copy samples from read pos of the buffer to the output buffer
-        // Left channel
-        self->output_l[i] = 
-            fc * (old_s_l * *(self->mix) / 100)
-            + (self->input_l[i] * (100 - *self->mix) / 100);
+        /* end of buffer handling */
 
-        // Same for right channel
-        self->output_r[i] = 
-            fc * (old_s_r * *(self->mix) / 100)
-            + (self->input_r[i] * (100 - *self->mix) / 100);
+        // Now copy samples from read pos of the buffer to the output buffer
+        // Note that the "fade coefficient" is applied here.
+        self->output_l[i] = blend(self->input_l[i], fc * old_s_l, *self->mix);
+        self->output_r[i] = blend(self->input_r[i], fc * old_s_r, *self->mix);
 
         // Iterate write position, reset to 0 if required
         self->wl_pos 
