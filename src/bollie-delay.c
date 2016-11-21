@@ -329,7 +329,7 @@ static float blend(float dry, float wet, float cp_blend) {
     float out = 0;
     if (cp_blend >= 0 && cp_blend <= 100) {
         out = cp_blend <= 50 ? dry + wet * (cp_blend * 0.02) : 
-            wet + dry * ((cp_blend - 50) * -0.02);
+            wet + dry * ((cp_blend - 50) * 0.02);
     }
     return out;
 }
