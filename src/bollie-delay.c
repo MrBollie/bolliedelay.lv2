@@ -66,9 +66,6 @@ typedef enum {
     BDL_OUTPUT_L    = 17,
     BDL_OUTPUT_R    = 18,
     BDL_TEMPO_OUT   = 19,
-    BDL_FADE_OUT    = 20,
-    BDL_DRY_GAIN    = 21,
-    BDL_WET_GAIN    = 22
 } PortIdx;
 
 typedef enum {
@@ -145,10 +142,6 @@ typedef struct {
     float wet_gain;     ///< current state leading towards target wet gain
 
     BollieState state;  ///< Overall state
-
-    float* fade_out;    ///< control port to debug fades
-    float* dry_gain_out;  ///< control port to debug dry gain
-    float* wet_gain_out;  ///< control port to debug wet gain
 } BollieDelay;
 
 
@@ -243,15 +236,6 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
             break;
         case BDL_TEMPO_OUT:
             self->tempo_out = data;
-            break;
-        case BDL_FADE_OUT:
-            self->fade_out = data;
-            break;
-        case BDL_DRY_GAIN:
-            self->dry_gain_out = data;
-            break;
-        case BDL_WET_GAIN:
-            self->wet_gain_out = data;
             break;
     }
 }
@@ -610,11 +594,6 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     self->wr_pos = wr_pos;
     self->wet_gain = wet_gain;
     self->dry_gain = dry_gain;
-
-    // Show interesting states on control ports
-    *self->fade_out = fc * 100;
-    *self->wet_gain_out = wet_gain * 100;
-    *self->dry_gain_out = dry_gain * 100;
 }
 
 
