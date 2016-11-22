@@ -66,12 +66,13 @@ typedef enum {
     BDL_OUTPUT_L    = 17,
     BDL_OUTPUT_R    = 18,
     BDL_TEMPO_OUT   = 19,
-    BDL_FADE_OUT    = 20
+    BDL_FADE_OUT    = 20,
+    BDL_DRY_GAIN    = 21,
+    BDL_WET_GAIN    = 22
 } PortIdx;
 
 typedef enum {
     FADE_IN,
-    FADE_IN_DONE,
     FADE_OUT,
     FADE_OUT_DONE,
     FILL_BUF,
@@ -140,37 +141,15 @@ typedef struct {
     int rl_pos;         ///< current read position, left side
     int rr_pos;         ///< current read position, right side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
+    float dry_gain;     ///< current state leading towards target dry gain
+    float wet_gain;     ///< current state leading towards target wet gain
 
     BollieState state;  ///< Overall state
 
     float* fade_out;    ///< control port to debug fades
+    float* dry_gain_out;  ///< control port to debug dry gain
+    float* wet_gain_out;  ///< control port to debug wet gain
 } BollieDelay;
-
-/**
-* Returns the current fade_coeff.
-* \param self Current plugin instance
-* \return fade coeff
-*/
-static float fade_coeff(BollieDelay* self) {
-    Fade* f = &self->fade;
-    if (self->state == FADE_IN) {
-        if (f->pos < f->length) {
-            return f->pos++ * (1/(float)f->length);
-        }
-        else {
-            self->state = CYCLE;
-        }
-    }
-    else if (self->state == FADE_OUT) {
-        if (f->pos > 0) {
-            return --f->pos * (1/(float)f->length);
-        }
-        else {
-            self->state = FADE_OUT_DONE;
-        }
-    }
-    return self->state == CYCLE ? 1 : 0;
-}
 
 
 /**
@@ -188,7 +167,7 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
 
     // Fade in set for first delay
     self->fade.length = ceil(rate / 50);
-    //self->fade.length = ceil(rate *4);
+    //self->fade.length = ceil(rate *4); // just for debugging
     self->fade.pos = 0;
 
     return (LV2_Handle)self;
@@ -268,6 +247,12 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_FADE_OUT:
             self->fade_out = data;
             break;
+        case BDL_DRY_GAIN:
+            self->dry_gain_out = data;
+            break;
+        case BDL_WET_GAIN:
+            self->wet_gain_out = data;
+            break;
     }
 }
     
@@ -306,32 +291,12 @@ static void activate(LV2_Handle instance) {
     self->cur_tempo = 0;
     self->cur_div_l = 0;
     self->cur_div_r = 0;
+    self->dry_gain = 0;
+    self->wet_gain = 0;
 
     // Reset tapping
     self->start_tap = 0;
     self->tempo_tap = 120;
-}
-
-
-/**
-* This does the blend calculations for dry/wet proportions. 
-* if cp_blend is below or equal to 50, dry will be passed
-* through and wet added accordingly to the cp_blend value.
-* If greater than 50, wet will be passed through and dry
-* added. 
-* \param dry dry sample
-* \param wet wet sample
-* \param cp_blend float value from the control port
-* \return mixed sample or 0 if cp_blend is invalid.
-* \todo check if dry is correctly computed.
-*/
-static float blend(float dry, float wet, float cp_blend) {
-    float out = 0;
-    if (cp_blend >= 0 && cp_blend <= 100) {
-        out = cp_blend <= 50 ? dry + wet * (cp_blend * 0.02) : 
-            wet + dry * ((100 - cp_blend) * 0.02);
-    }
-    return out;
 }
 
 
@@ -404,6 +369,9 @@ static int calc_delay_samples(BollieDelay* self, float tempo, int div) {
 static void run(LV2_Handle instance, uint32_t n_samples) {
     BollieDelay* self = (BollieDelay*)instance;
 
+    // Get the fade status object
+    Fade* f = &self->fade;
+    BollieState state = self->state;
 
     // First some TAP handling
     if (*(self->tap) > 0) {
@@ -430,7 +398,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     ) {
         // If the fade out is done, resize buffer and get everything set for 
         // filling the buffers.
-        if (self->state == FADE_OUT_DONE) {
+        if (state == FADE_OUT_DONE) {
             // Memorize the user's current settings.
             self->cur_tempo = tempo;
             self->cur_div_l = *self->div_l;
@@ -463,49 +431,97 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             *self->tempo_out = tempo;
 
             // Ready to fill buffer
-            self->state = FILL_BUF;
+            state = FILL_BUF;
         }
-        else if (self->state != FADE_OUT) {
+        else if (state != FADE_OUT) {
              // If we reach this, tempo has been changed, but no fade out
              // has been done yet.
-             self->state = FADE_OUT;
+             state = FADE_OUT;
         }
     }
 
+    // Let's do the vfade gain calculation
+    const float cp_blend = *self->mix;
+    float target_dry_gain = 1;
+    float target_wet_gain = 0.25;
+    if (cp_blend >= 0 && cp_blend <= 50) {
+        target_wet_gain = cp_blend * 0.02f;
+    }
+    else if (cp_blend <= 100 && cp_blend > 50) {
+        target_wet_gain = 1;
+        target_dry_gain = (100 - cp_blend) * 0.02f;
+    }
+
+    // State stuff to get more from heap to stack
+    float dry_gain = self->dry_gain;
+    float wet_gain = self->wet_gain;
+    int buf_fill_l = self->buf_fill_l;
+    int buf_fill_r = self->buf_fill_r;
+    int d_samples_l = self->d_samples_l;
+    int d_samples_r = self->d_samples_r;
+    int rl_pos = self->rl_pos;
+    int rr_pos = self->rr_pos;
+    int wl_pos = self->wl_pos;
+    int wr_pos = self->wr_pos;
+    float fc = 0; // fade coefficient
+
     // Loop over the block of audio we got
-    for (unsigned int i = 0 ; i < n_samples ; i++) {
-
-        // Calculates the fade coeff. This also increases
-        // the internal fade position.
-        float fc = fade_coeff(self);
-
-        // Show current fade state on control port
-        *self->fade_out = fc * 100;
-
-        // Previous samples
-        float old_s_l = 0;
-        float old_s_r = 0;
-
-        // Buffer is to be filled?
-        if(self->state == FILL_BUF) {
-            // If the buffer is filled, initiate a fade in
-            if (self->buf_fill_r == self->d_samples_r &&
-                self->buf_fill_l == self->d_samples_l
-            ) {
-                self->state = FADE_IN;
-            }
-        }
-        else {
-            // Old samples will only be retrieved from the buffer
-            // if the buffer is filled.
-            old_s_r = self->buffer_r[self->rr_pos] * fc;
-            old_s_l = self->buffer_l[self->rl_pos] * fc;
-        }
+    for (unsigned int i = 0 ; i < n_samples ; ++i) {
 
         // Current samples
         float cur_fs_l = self->input_l[i];
         float cur_fs_r = self->input_r[i];
 
+        // Previous samples
+        float old_s_l = 0;
+        float old_s_r = 0;
+
+        // Calculates the fade coeff. This also increases
+        // the internal fade position.
+        switch (state) {
+            case FADE_OUT:
+                if (f->pos > 0) {
+                    fc = --f->pos * (1/(float)f->length);
+                }
+                else {
+                    fc = 0;
+                    state = FADE_OUT_DONE;
+                }
+                break;
+            case FADE_OUT_DONE:
+                fc = 0; // keep it at zero
+                break;
+            case FILL_BUF:
+                // If the buffer is filled, initiate a fade in
+                if (buf_fill_r == d_samples_r &&
+                    buf_fill_l == d_samples_l
+                ) {
+                    state = FADE_IN;
+                }
+                fc = 0;
+                break;
+            case FADE_IN:   
+                if (f->pos < f->length) {
+                    fc = f->pos++ * (1/(float)f->length);
+                }
+                else {
+                    state = CYCLE;
+                    fc = 1;
+                }
+                break;
+            case CYCLE: 
+                fc = 1;
+            default:
+                fc = 1;
+                break;
+        }
+
+        // In these state retrieve old samples from delay buffer
+        if (state == FADE_IN || state == FADE_OUT || state == CYCLE) {
+                old_s_l = self->buffer_l[rl_pos] * fc;
+                old_s_r = self->buffer_r[rr_pos] * fc;
+        }
+    
         // Apply the low cut filter if enabled
         if (*self->low_on) {
             cur_fs_l = bf_lcf(
@@ -545,44 +561,60 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 
         /* Feedback and Crossfeed filling the buffer */
         // Left Channel
-        self->buffer_l[self->wl_pos] = 
-            cur_fs_l                            // current filtered sample
+        self->buffer_l[wl_pos] = cur_fs_l       // current filtered sample
             + old_s_r * *self->crossf / 100     // mix with crossfeed
             + old_s_l * *self->decay / 100;     // mix with decayed old sample
 
         // Right channel (s. above)
-        self->buffer_r[self->wr_pos] = 
-            cur_fs_r
+        self->buffer_r[wr_pos] = cur_fs_r
             + old_s_l * *self->crossf / 100
             + old_s_r * *self->decay / 100;
 
         // Increase buf fill count
-        if (self->buf_fill_l < self->d_samples_l)
-            self->buf_fill_l++;
+        if (buf_fill_l < d_samples_l)
+            buf_fill_l++;
 
-        if (self->buf_fill_r < self->d_samples_r)
-            self->buf_fill_r++;
+        if (buf_fill_r < d_samples_r)
+            buf_fill_r++;
 
         /* end of buffer handling */
 
-        // Now copy samples from read pos of the buffer to the output buffer
-        // Note that the "fade coefficient" is applied here.
-        self->output_l[i] = blend(self->input_l[i], fc * old_s_l, *self->mix);
-        self->output_r[i] = blend(self->input_r[i], fc * old_s_r, *self->mix);
+        // Paraemter smoothing for wet and dry gain
+        wet_gain = target_wet_gain * 0.01f + wet_gain * 0.99f;
+        dry_gain = target_dry_gain * 0.01f + dry_gain * 0.99f;
+
+        // Will it blend? ;)
+        self->output_l[i] = 
+            dry_gain * self->input_l[i] + wet_gain * old_s_l;
+        self->output_r[i] = 
+            dry_gain * self->input_r[i] + wet_gain * old_s_r;
 
         // Iterate write position, reset to 0 if required
-        self->wl_pos 
-            = (self->wl_pos+1 >= self->d_samples_l+1 ? 0 : self->wl_pos+1);
-        self->wr_pos 
-            = (self->wr_pos+1 >= self->d_samples_r+1 ? 0 : self->wr_pos+1);
+        wl_pos = (wl_pos+1 >= d_samples_l+1 ? 0 : wl_pos+1);
+        wr_pos = (wr_pos+1 >= d_samples_r+1 ? 0 : wr_pos+1);
 
         // Iterate reade positions, reset to 0 if required.
-        self->rl_pos 
-            = (self->rl_pos+1 >= self->d_samples_l+1 ? 0 : self->rl_pos+1);
-        self->rr_pos 
-            = (self->rr_pos+1 >= self->d_samples_r+1 ? 0 : self->rr_pos+1);
+        rl_pos = (rl_pos+1 >= d_samples_l+1 ? 0 : rl_pos+1);
+        rr_pos = (rr_pos+1 >= d_samples_r+1 ? 0 : rr_pos+1);
 
     }
+    // Memorize state for next run
+    self->state = state;
+    self->buf_fill_l = buf_fill_l;
+    self->buf_fill_r = buf_fill_r;
+    self->d_samples_l = d_samples_l;
+    self->d_samples_r = d_samples_r;
+    self->rl_pos = rl_pos;
+    self->rr_pos = rr_pos;
+    self->wl_pos = wl_pos;
+    self->wr_pos = wr_pos;
+    self->wet_gain = wet_gain;
+    self->dry_gain = dry_gain;
+
+    // Show interesting states on control ports
+    *self->fade_out = fc * 100;
+    *self->wet_gain_out = wet_gain * 100;
+    *self->dry_gain_out = dry_gain * 100;
 }
 
 
