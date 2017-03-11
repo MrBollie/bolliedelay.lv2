@@ -51,7 +51,7 @@ typedef enum {
     BDL_TEMPO_MODE  = 2,
     BDL_TAP         = 3,
     BDL_MIX         = 4,
-    BDL_DECAY       = 5,
+    BDL_FEEDBACK    = 5,
     BDL_CROSSF      = 6,
     BDL_LOW_ON      = 7,
     BDL_LOW_F       = 8,
@@ -96,8 +96,8 @@ typedef struct {
     float* tempo_out;           ///< For displaying the current tempo on the UI
     const float* tap;           ///< Control port for tapping
     const float* mix;           ///< mix/blend in percentage
-    const float* decay;         ///< decay in percentage
-    const float* crossf;        ///< crossfeed (0-50) between inputs
+    const float* feedback;      ///< feedback in percentage
+    const float* crossf;        ///< crossfeed in percentage between inputs
     const float* low_on;        ///< LCF: 0=off, 1=on
     const float* low_f;         ///< LCF cut off frequency
     const float* low_q;         ///< LCF quality
@@ -140,6 +140,8 @@ typedef struct {
     int start_tap;      ///< when did the last tap happen (ms since epoch)
     float dry_gain;     ///< current state leading towards target dry gain
     float wet_gain;     ///< current state leading towards target wet gain
+    float cur_feedback; ///< current state leading towards target feedback gain
+    float cur_crossf;   ///< current state leading towards target crossfeed gain
 
     BollieState state;  ///< Overall state
 } BollieDelay;
@@ -192,8 +194,8 @@ static void connect_port(LV2_Handle instance, uint32_t port, void *data) {
         case BDL_MIX:
             self->mix = data;
             break;
-        case BDL_DECAY:
-            self->decay = data;
+        case BDL_FEEDBACK:
+            self->feedback = data;
             break;
         case BDL_CROSSF:
             self->crossf = data;
@@ -443,9 +445,30 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         target_dry_gain = 0;
     }
 
+    // Lets do the feedback/crossfeed calculation        
+    const float cp_feedback = *self->feedback;
+    float target_feedback = 0;
+    if (cp_feedback > 0 && cp_feedback < 100) {
+        target_feedback = powf(10.0f, (cp_feedback-100) * 0.025f);
+    }
+    else if (cp_feedback == 100) {
+        target_feedback = 1;
+    }
+
+    const float cp_crossf = *self->crossf;
+    float target_crossf = 0;
+    if (cp_crossf > 0 && cp_crossf < 100) {
+        target_crossf = powf(10.0f, (cp_crossf-100) * 0.025f);
+    }
+    else if (cp_feedback == 100) {
+        target_crossf = 1;
+    }
+
     // State stuff to get more from heap to stack
     float dry_gain = self->dry_gain;
     float wet_gain = self->wet_gain;
+    float cur_feedback = self->cur_feedback;
+    float cur_crossf = self->cur_crossf;
     int buf_fill_l = self->buf_fill_l;
     int buf_fill_r = self->buf_fill_r;
     int d_samples_l = self->d_samples_l;
@@ -551,15 +574,22 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
  
 
         /* Feedback and Crossfeed filling the buffer */
+
+        // parameter smoothing for feedback/crossfeed
+        cur_feedback = target_feedback * 0.01f + cur_feedback * 0.99f;
+        cur_crossf = target_crossf * 0.01f + cur_crossf * 0.99f;
+
         // Left Channel
         self->buffer_l[wl_pos] = cur_fs_l       // current filtered sample
-            + old_s_r * powf(10.0f, (*self->crossf - 100) * 0.025f) // mix cf
-            + old_s_l * powf(10.0f, (*self->decay - 100) * 0.025f);  // feedback
+            + old_s_r * cur_crossf              // crossfeed sample
+            + old_s_l * cur_feedback            // feedback sample
+        ;
 
         // Right channel (s. above)
         self->buffer_r[wr_pos] = cur_fs_r
-            + old_s_l * powf(10.0f, (*self->crossf - 100) * 0.025f)
-            + old_s_r * powf(10.0f, (*self->decay - 100) * 0.025f);
+            + old_s_l * cur_crossf
+            + old_s_r * cur_feedback
+        ;
 
         // Increase buf fill count
         if (buf_fill_l < d_samples_l)
@@ -601,6 +631,8 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     self->wr_pos = wr_pos;
     self->wet_gain = wet_gain;
     self->dry_gain = dry_gain;
+    self->cur_crossf = cur_crossf;
+    self->cur_feedback = cur_feedback;
 }
 
 
