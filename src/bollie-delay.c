@@ -427,13 +427,20 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     // Let's do the vfade gain calculation
     const float cp_blend = *self->mix;
     float target_dry_gain = 1;
-    float target_wet_gain = 0.25;
-    if (cp_blend >= 0 && cp_blend <= 50) {
-        target_wet_gain = cp_blend * 0.02f;
+    float target_wet_gain = 0;
+    if (cp_blend > 0 && cp_blend < 50) {
+        target_wet_gain = powf(10.0f, (cp_blend-50) * 0.05f);
     }
-    else if (cp_blend <= 100 && cp_blend > 50) {
+    else if (cp_blend < 100 && cp_blend > 50) {
         target_wet_gain = 1;
-        target_dry_gain = (100 - cp_blend) * 0.02f;
+        target_dry_gain = powf(10.0f, (cp_blend-50) * -0.05f);
+    }
+    else if (cp_blend == 50) {
+        target_wet_gain = 1;
+    }
+    else if (cp_blend == 100) {
+        target_wet_gain = 1;
+        target_dry_gain = 0;
     }
 
     // State stuff to get more from heap to stack
@@ -546,13 +553,13 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         /* Feedback and Crossfeed filling the buffer */
         // Left Channel
         self->buffer_l[wl_pos] = cur_fs_l       // current filtered sample
-            + old_s_r * *self->crossf / 100     // mix with crossfeed
-            + old_s_l * *self->decay / 100;     // mix with decayed old sample
+            + old_s_r * powf(10.0f, (*self->crossf - 100) * 0.025f) // mix cf
+            + old_s_l * powf(10.0f, (*self->decay - 100) * 0.025f);  // feedback
 
         // Right channel (s. above)
         self->buffer_r[wr_pos] = cur_fs_r
-            + old_s_l * *self->crossf / 100
-            + old_s_r * *self->decay / 100;
+            + old_s_l * powf(10.0f, (*self->crossf - 100) * 0.025f)
+            + old_s_r * powf(10.0f, (*self->decay - 100) * 0.025f);
 
         // Increase buf fill count
         if (buf_fill_l < d_samples_l)
