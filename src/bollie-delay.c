@@ -431,11 +431,11 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     float target_dry_gain = 1;
     float target_wet_gain = 0;
     if (cp_blend > 0 && cp_blend < 50) {
-        target_wet_gain = powf(10.0f, (cp_blend-50) * 0.05f);
+        target_wet_gain = powf(10.0f, (cp_blend-50) * 0.032f);
     }
     else if (cp_blend < 100 && cp_blend > 50) {
         target_wet_gain = 1;
-        target_dry_gain = powf(10.0f, (cp_blend-50) * -0.05f);
+        target_dry_gain = powf(10.0f, (cp_blend-50) * -0.032f);
     }
     else if (cp_blend == 50) {
         target_wet_gain = 1;
@@ -449,7 +449,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     const float cp_feedback = *self->feedback;
     float target_feedback = 0;
     if (cp_feedback > 0 && cp_feedback < 100) {
-        target_feedback = powf(10.0f, (cp_feedback-100) * 0.025f);
+        target_feedback = powf(10.0f, (cp_feedback-100) * 0.016f);
     }
     else if (cp_feedback == 100) {
         target_feedback = 1;
@@ -458,7 +458,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     const float cp_crossf = *self->crossf;
     float target_crossf = 0;
     if (cp_crossf > 0 && cp_crossf < 100) {
-        target_crossf = powf(10.0f, (cp_crossf-100) * 0.025f);
+        target_crossf = powf(10.0f, (cp_crossf-100) * 0.016f);
     }
     else if (cp_feedback == 100) {
         target_crossf = 1;
