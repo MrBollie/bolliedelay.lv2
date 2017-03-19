@@ -307,7 +307,7 @@ static float handle_tap(BollieDelay* self) {
 
         // Reset if we exceed the maximum delay time
         if (d <= 50 || d > 10000 ) {
-            d = 0;
+            return self->tempo_tap;
         }
     }
     self->start_tap = t_cur_ms;
