@@ -289,11 +289,11 @@ static void activate(LV2_Handle instance) {
 /**
 * Handles a tap on the tap button and calculates time differences
 * \param self pointer to current plugin instance
-* \return Beats per minute
+* \return Beats per minute or zero if it didn't work
 */
 static float handle_tap(BollieDelay* self) {
 
-    float d = 0;
+    float d = 500;
 
     struct timeval t_cur;
     gettimeofday(&t_cur, 0);
@@ -301,7 +301,7 @@ static float handle_tap(BollieDelay* self) {
     // convert it to milliseconds
     long int t_cur_ms = floor(t_cur.tv_sec * 1000 + t_cur.tv_usec / 1000);
 
-    // If start tep is memorized, do some calculations
+    // If start tap is memorized, do some calculations
     if (self->start_tap) {
         d = t_cur_ms - self->start_tap;
 
@@ -311,7 +311,7 @@ static float handle_tap(BollieDelay* self) {
         }
     }
     self->start_tap = t_cur_ms;
-    return 60000 / d;   // convert to bpm
+    return (d > 0 ? 60000 / d : 0);   // convert to bpm
 }
 
 
