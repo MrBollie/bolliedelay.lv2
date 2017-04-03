@@ -293,7 +293,7 @@ static void activate(LV2_Handle instance) {
 */
 static float handle_tap(BollieDelay* self) {
 
-    float d = 500;
+    float d = 0;
 
     struct timeval t_cur;
     gettimeofday(&t_cur, 0);
