@@ -68,24 +68,6 @@ typedef enum {
     BDL_TEMPO_OUT   = 19,
 } PortIdx;
 
-typedef enum {
-    FADE_IN,
-    FADE_OUT,
-    FADE_OUT_DONE,
-    FILL_BUF,
-    CYCLE
-} BollieState;
-
-
-/**
-* Fade state
-*/
-typedef struct {
-    int length;
-    int pos;
-} Fade;
-
-
 /**
 * Struct for THE BollieDelay instance, the host is going to use.
 */
@@ -114,36 +96,27 @@ typedef struct {
     double rate;                ///< Current sample rate
 
     float buffer_l[MAX_TAPE_LEN];   ///< delay buffer left
-    int buf_fill_l;                 ///< current fill level
     float buffer_r[MAX_TAPE_LEN];   ///< delay buffer right
-    int buf_fill_r;                 ///< current fill level
 
     BollieFilter filter_low_l;      ///< LCF left
     BollieFilter filter_low_r;      ///< LCF right
     BollieFilter filter_high_l;     ///< HCF left
     BollieFilter filter_high_r;     ///< HCF right
 
-    int d_samples_l; /**< Storing the max. number of samples for the current 
-                            delay time, left */
-    int d_samples_r; /**< Storing the max. number of samples for the current 
-                            delay time, left */
-
-    Fade fade;          ///< Fade state
     float tempo_tap;    ///< storing tapped tempo
     float cur_tempo;    ///< state variable for current tempo set by tempo (above)
     float cur_div_l;    ///< state var for current division, left side
     float cur_div_r;    ///< state var for current division, right side
-    int wl_pos;         ///< current write position, left side
-    int wr_pos;         ///< current write position, right side
-    int rl_pos;         ///< current read position, left side
-    int rr_pos;         ///< current read position, right side
+    double cur_d_t_ch1; ///< current delay time
+    double cur_d_t_ch2; ///< current delay time
+    int pos_w;          ///< current write position, left side
     int start_tap;      ///< when did the last tap happen (ms since epoch)
     float dry_gain;     ///< current state leading towards target dry gain
     float wet_gain;     ///< current state leading towards target wet gain
     float cur_feedback; ///< current state leading towards target feedback gain
     float cur_crossf;   ///< current state leading towards target crossfeed gain
-
-    BollieState state;  ///< Overall state
+    double tgt_d_t_ch1; ///< target delay time
+    double tgt_d_t_ch2; ///< target delay time
 } BollieDelay;
 
 
@@ -159,11 +132,6 @@ static LV2_Handle instantiate(const LV2_Descriptor * descriptor, double rate,
 
     // Memorize sample rate for calculation
     self->rate = rate;
-
-    // Fade in set for first delay
-    self->fade.length = ceil(rate / 50);
-    //self->fade.length = ceil(rate *4); // just for debugging
-    self->fade.pos = 0;
 
     return (LV2_Handle)self;
 }
@@ -254,14 +222,12 @@ static void activate(LV2_Handle instance) {
         self->buffer_l[i] = 0;
         self->buffer_r[i] = 0;
     }
-    self->state = FILL_BUF;
-
-    self->buf_fill_r = 0;
-    self->buf_fill_l = 0;
 
     // Initialize number of samples needed
-    self->d_samples_l = 0;
-    self->d_samples_r = 0;
+    self->cur_d_t_ch1 = 0;
+    self->cur_d_t_ch2 = 0;
+    self->tgt_d_t_ch1 = 0;
+    self->tgt_d_t_ch2 = 0;
 
     // Clear the filters
     bf_reset(&self->filter_low_l);
@@ -270,10 +236,7 @@ static void activate(LV2_Handle instance) {
     bf_reset(&self->filter_high_r);
 
     // Reset the positions & state variables
-    self->wl_pos = 0;
-    self->wr_pos = 0;
-    self->rl_pos = 0;
-    self->rr_pos = 0;
+    self->pos_w = 0;
     self->cur_tempo = 0;
     self->cur_div_l = 0;
     self->cur_div_r = 0;
@@ -323,9 +286,9 @@ static float handle_tap(BollieDelay* self) {
 * \return number of samples needed for the delay buffer
 * \todo divider enum
 */
-static int calc_delay_samples(BollieDelay* self, float tempo, int div) {
+static double calc_delay_samples(BollieDelay* self, float tempo, int div) {
     // Calculate the samples needed 
-    float d = 60 / tempo * self->rate;
+    double d = 60 / tempo * self->rate;
     switch(div) {
         case 1:
         d = d * 2/3;
@@ -343,9 +306,23 @@ static int calc_delay_samples(BollieDelay* self, float tempo, int div) {
             d = d / 4;
             break;
     }
-    return floor(d);
+    return d;
 }
 
+/**
+* linear sample interpolation from buffer
+* \param buf pointer to the buffer
+* \param x sample coordinate. Can be also negative.
+* \return interpolated sample
+*/
+static float interpolate(float *buf, double x) {
+    if (x < 0) x += MAX_TAPE_LEN;
+    if (x >= MAX_TAPE_LEN) x -= MAX_TAPE_LEN;
+    int32_t x0 = (int32_t)x;
+    float frac = x - (double)x0;
+    int32_t x1 = x0+1;
+    return buf[x0]  + frac * (buf[x1 >= MAX_TAPE_LEN ? 0 : x1] - buf[x0]);
+}
 
 /**
 * Main process function of the plugin.
@@ -354,10 +331,6 @@ static int calc_delay_samples(BollieDelay* self, float tempo, int div) {
 */
 static void run(LV2_Handle instance, uint32_t n_samples) {
     BollieDelay* self = (BollieDelay*)instance;
-
-    // Get the fade status object
-    Fade* f = &self->fade;
-    BollieState state = self->state;
 
     // First some TAP handling
     if (*(self->tap) > 0) {
@@ -377,53 +350,34 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             break;
     }
 
+    // pull delay times from heap
+    double cur_d_t_ch1 = self->cur_d_t_ch1;
+    double cur_d_t_ch2 = self->cur_d_t_ch2;
+    double tgt_d_t_ch1 = self->tgt_d_t_ch1;
+    double tgt_d_t_ch2 = self->tgt_d_t_ch2;
+
     // Tempo changes always initiate a fade out.
     if ((tempo != self->cur_tempo ||
         *self->div_l != self->cur_div_l ||
         *self->div_r != self->cur_div_r)
     ) {
-        // If the fade out is done, resize buffer and get everything set for 
-        // filling the buffers.
-        if (state == FADE_OUT_DONE) {
-            // Memorize the user's current settings.
-            self->cur_tempo = tempo;
-            self->cur_div_l = *self->div_l;
-            self->cur_div_r = *self->div_r;
+    	// Calculate the samples needed for the currently set delay time
+        self->tgt_d_t_ch1 = calc_delay_samples(self, tempo, *self->div_l);
+        self->tgt_d_t_ch2 = calc_delay_samples(self, tempo, *self->div_r);
 
-            // Calculate the samples needed for the currently set delay time
-            self->d_samples_l = 
-                calc_delay_samples(self, tempo, *self->div_l);
-            self->d_samples_r =
-                calc_delay_samples(self, tempo, *self->div_r);
+        // Memorize the user's current settings.
+        self->cur_tempo = tempo;
+        self->cur_div_l = *self->div_l;
+        self->cur_div_r = *self->div_r;
 
-            /* The buffer always needs to be one sample bigger than the delay 
-            time.  In order to not exceed MAX_TAPE_LEN, cut the number of 
-            samples, if needed */
-            if (self->d_samples_l+1 > MAX_TAPE_LEN)
-                self->d_samples_l = MAX_TAPE_LEN-1;
+        /* The buffer always needs to be one sample bigger than the delay 
+        time.  In order to not exceed MAX_TAPE_LEN, cut the number of 
+        samples, if needed */
+        if (self->tgt_d_t_ch1+1 > MAX_TAPE_LEN)
+            self->tgt_d_t_ch1 = MAX_TAPE_LEN-1;
 
-            if (self->d_samples_r+1 > MAX_TAPE_LEN)
-                self->d_samples_r = MAX_TAPE_LEN-1;
-
-            // Reset positions and pretend the buffer to be empty
-            self->rl_pos = 0;
-            self->rr_pos = 0;
-            self->wl_pos = self->d_samples_l;
-            self->wr_pos = self->d_samples_r;
-            self->buf_fill_l = 0;
-            self->buf_fill_r = 0;
-
-            // Send current tempo to control port
-            *self->tempo_out = tempo;
-
-            // Ready to fill buffer
-            state = FILL_BUF;
-        }
-        else if (state != FADE_OUT) {
-             // If we reach this, tempo has been changed, but no fade out
-             // has been done yet.
-             state = FADE_OUT;
-        }
+        if (self->tgt_d_t_ch2-1 > MAX_TAPE_LEN)
+            self->tgt_d_t_ch2 = MAX_TAPE_LEN-1;
     }
 
     // Let's do the vfade gain calculation
@@ -469,15 +423,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     float wet_gain = self->wet_gain;
     float cur_feedback = self->cur_feedback;
     float cur_crossf = self->cur_crossf;
-    int buf_fill_l = self->buf_fill_l;
-    int buf_fill_r = self->buf_fill_r;
-    int d_samples_l = self->d_samples_l;
-    int d_samples_r = self->d_samples_r;
-    int rl_pos = self->rl_pos;
-    int rr_pos = self->rr_pos;
-    int wl_pos = self->wl_pos;
-    int wr_pos = self->wr_pos;
-    float fc = 0; // fade coefficient
+    int pos_w = self->pos_w;
 
     // Loop over the block of audio we got
     for (unsigned int i = 0 ; i < n_samples ; ++i) {
@@ -490,51 +436,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         float old_s_l = 0;
         float old_s_r = 0;
 
-        // Calculates the fade coeff. This also increases
-        // the internal fade position.
-        switch (state) {
-            case FADE_OUT:
-                if (f->pos > 0) {
-                    fc = --f->pos * (1/(float)f->length);
-                }
-                else {
-                    fc = 0;
-                    state = FADE_OUT_DONE;
-                }
-                break;
-            case FADE_OUT_DONE:
-                fc = 0; // keep it at zero
-                break;
-            case FILL_BUF:
-                // If the buffer is filled, initiate a fade in
-                if (buf_fill_r == d_samples_r &&
-                    buf_fill_l == d_samples_l
-                ) {
-                    state = FADE_IN;
-                }
-                fc = 0;
-                break;
-            case FADE_IN:   
-                if (f->pos < f->length) {
-                    fc = f->pos++ * (1/(float)f->length);
-                }
-                else {
-                    state = CYCLE;
-                    fc = 1;
-                }
-                break;
-            case CYCLE: 
-                fc = 1;
-            default:
-                fc = 1;
-                break;
-        }
-
-        // In these state retrieve old samples from delay buffer
-        if (state == FADE_IN || state == FADE_OUT || state == CYCLE) {
-                old_s_l = self->buffer_l[rl_pos] * fc;
-                old_s_r = self->buffer_r[rr_pos] * fc;
-        }
+	// calculate fractional sample position. function interpolate will
+	// handle wrap-arounds on its own
+	double x = (double)pos_w - cur_d_t_ch1;
+        old_s_l = interpolate(self->buffer_l, x);
+	x = (double)pos_w - cur_d_t_ch2;
+        old_s_r = interpolate(self->buffer_r, x);
     
         // Apply the low cut filter if enabled
         if (*self->low_on) {
@@ -571,7 +478,10 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
                 &self->filter_high_r
             );
         }
- 
+
+	// delay time smoothing
+	cur_d_t_ch1 = tgt_d_t_ch1 * 0.001f + cur_d_t_ch1 * 0.999f;
+	cur_d_t_ch2 = tgt_d_t_ch2 * 0.001f + cur_d_t_ch2 * 0.999f;
 
         /* Feedback and Crossfeed filling the buffer */
 
@@ -580,23 +490,16 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         cur_crossf = target_crossf * 0.01f + cur_crossf * 0.99f;
 
         // Left Channel
-        self->buffer_l[wl_pos] = cur_fs_l       // current filtered sample
+        self->buffer_l[pos_w] = cur_fs_l       // current filtered sample
             + old_s_r * cur_crossf              // crossfeed sample
             + old_s_l * cur_feedback            // feedback sample
         ;
 
         // Right channel (s. above)
-        self->buffer_r[wr_pos] = cur_fs_r
+        self->buffer_r[pos_w] = cur_fs_r
             + old_s_l * cur_crossf
             + old_s_r * cur_feedback
         ;
-
-        // Increase buf fill count
-        if (buf_fill_l < d_samples_l)
-            buf_fill_l++;
-
-        if (buf_fill_r < d_samples_r)
-            buf_fill_r++;
 
         /* end of buffer handling */
 
@@ -611,24 +514,12 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             dry_gain * self->input_r[i] + wet_gain * old_s_r;
 
         // Iterate write position, reset to 0 if required
-        wl_pos = (wl_pos+1 >= d_samples_l+1 ? 0 : wl_pos+1);
-        wr_pos = (wr_pos+1 >= d_samples_r+1 ? 0 : wr_pos+1);
-
-        // Iterate reade positions, reset to 0 if required.
-        rl_pos = (rl_pos+1 >= d_samples_l+1 ? 0 : rl_pos+1);
-        rr_pos = (rr_pos+1 >= d_samples_r+1 ? 0 : rr_pos+1);
-
+        pos_w = pos_w + 1 >= MAX_TAPE_LEN ? 0 : pos_w + 1;
     }
     // Memorize state for next run
-    self->state = state;
-    self->buf_fill_l = buf_fill_l;
-    self->buf_fill_r = buf_fill_r;
-    self->d_samples_l = d_samples_l;
-    self->d_samples_r = d_samples_r;
-    self->rl_pos = rl_pos;
-    self->rr_pos = rr_pos;
-    self->wl_pos = wl_pos;
-    self->wr_pos = wr_pos;
+    self->cur_d_t_ch1 = cur_d_t_ch1;
+    self->cur_d_t_ch2 = cur_d_t_ch2;
+    self->pos_w = pos_w;
     self->wet_gain = wet_gain;
     self->dry_gain = dry_gain;
     self->cur_crossf = cur_crossf;
